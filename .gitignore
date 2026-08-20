@@ -1,5 +1,22 @@
 .venv/
+venv/
+
 .env
+
 __pycache__/
+*.pyc
+
+# Generated meeting data
 data/meetings/
+
+# Generated recordings
 *.wav
+
+# Generated transcripts
+my_transcript.txt
+client_transcript.txt
+combined_transcript.txt
+
+# Generated AI meeting notes
+meeting_notes.json
+meeting_notes.txt
