@@ -1,5 +1,6 @@
 import json
 import os
+import time
 from pathlib import Path
 from typing import Optional
 
@@ -57,10 +58,24 @@ MODEL_NAME = "gemini-3.5-flash"
 
 
 # ============================================================
+# RETRY CONFIG
+# ============================================================
+
+MAX_RETRIES = 4
+
+RETRY_DELAYS = [
+    2,
+    4,
+    8,
+]
+
+
+# ============================================================
 # STRUCTURED DATA MODELS
 # ============================================================
 
 class ActionItem(BaseModel):
+
     task: str = Field(
         description=(
             "The exact task or responsibility "
@@ -78,6 +93,7 @@ class ActionItem(BaseModel):
 
 
 class Decision(BaseModel):
+
     decision: str = Field(
         description=(
             "A decision that was actually agreed "
@@ -148,25 +164,136 @@ class MeetingNotes(BaseModel):
 
 
 # ============================================================
+# TEMPORARY GEMINI ERROR DETECTION
+# ============================================================
+
+def is_temporary_gemini_error(error):
+    """
+    Returns True for temporary errors that are
+    worth retrying.
+    """
+
+    message = str(error).lower()
+
+    temporary_markers = [
+        "503",
+        "unavailable",
+        "high demand",
+        "429",
+        "resource exhausted",
+        "temporarily",
+        "timeout",
+        "deadline exceeded",
+    ]
+
+    return any(
+        marker in message
+        for marker in temporary_markers
+    )
+
+
+# ============================================================
+# GEMINI RETRY WRAPPER
+# ============================================================
+
+def generate_notes_with_retry(
+    prompt,
+    config,
+    status_callback=None,
+):
+    """
+    Calls Gemini and automatically retries
+    temporary errors such as 503 or 429.
+    """
+
+    last_error = None
+
+    for attempt in range(
+        1,
+        MAX_RETRIES + 1,
+    ):
+
+        try:
+
+            print(
+                f"Gemini notes attempt "
+                f"{attempt}/{MAX_RETRIES}..."
+            )
+
+            response = (
+                client.models.generate_content(
+                    model=MODEL_NAME,
+                    contents=prompt,
+                    config=config,
+                )
+            )
+
+            return response
+
+        except Exception as error:
+
+            last_error = error
+
+            if not is_temporary_gemini_error(
+                error
+            ):
+                raise
+
+            if attempt >= MAX_RETRIES:
+                break
+
+            delay = RETRY_DELAYS[
+                attempt - 1
+            ]
+
+            message = (
+                "Gemini is busy while generating "
+                f"meeting notes. Retrying in "
+                f"{delay} seconds "
+                f"({attempt}/{MAX_RETRIES})..."
+            )
+
+            print(message)
+
+            if status_callback:
+                status_callback(
+                    message
+                )
+
+            time.sleep(
+                delay
+            )
+
+    raise RuntimeError(
+        "Gemini could not generate meeting notes "
+        "after multiple retries.\n"
+        f"Last error: {last_error}"
+    )
+
+
+# ============================================================
 # LOAD TRANSCRIPT
 # ============================================================
 
 def load_transcript():
-    """
-    Loads the speaker-aware transcript.
-    """
 
     if not TRANSCRIPT_FILE.exists():
+
         raise FileNotFoundError(
             f"Transcript not found:\n"
             f"{TRANSCRIPT_FILE}"
         )
 
-    transcript = TRANSCRIPT_FILE.read_text(
-        encoding="utf-8"
-    ).strip()
+    transcript = (
+        TRANSCRIPT_FILE
+        .read_text(
+            encoding="utf-8"
+        )
+        .strip()
+    )
 
     if not transcript:
+
         raise RuntimeError(
             "combined_transcript.txt is empty."
         )
@@ -178,14 +305,15 @@ def load_transcript():
 # GENERATE MEETING INTELLIGENCE
 # ============================================================
 
-def generate_meeting_notes(transcript):
-    """
-    Sends the transcript to Gemini and asks it
-    to extract structured meeting intelligence.
-    """
+def generate_meeting_notes(
+    transcript,
+    status_callback=None,
+):
 
     print()
-    print("Analyzing meeting transcript...")
+    print(
+        "Analyzing meeting transcript..."
+    )
 
     prompt = f"""
 You are an AI meeting assistant.
@@ -250,22 +378,28 @@ TRANSCRIPT:
 {transcript}
 """
 
-    response = client.models.generate_content(
-        model=MODEL_NAME,
-        contents=prompt,
-        config=types.GenerateContentConfig(
-            response_mime_type="application/json",
-            response_schema=MeetingNotes,
-        ),
+    config = types.GenerateContentConfig(
+        response_mime_type="application/json",
+        response_schema=MeetingNotes,
+    )
+
+    response = generate_notes_with_retry(
+        prompt=prompt,
+        config=config,
+        status_callback=status_callback,
     )
 
     if not response.text:
+
         raise RuntimeError(
             "Gemini returned an empty response."
         )
 
-    notes = MeetingNotes.model_validate_json(
-        response.text
+    notes = (
+        MeetingNotes
+        .model_validate_json(
+            response.text
+        )
     )
 
     return notes
@@ -276,9 +410,6 @@ TRANSCRIPT:
 # ============================================================
 
 def save_json(notes):
-    """
-    Saves structured meeting intelligence as JSON.
-    """
 
     data = notes.model_dump()
 
@@ -302,13 +433,10 @@ def save_json(notes):
 
 
 # ============================================================
-# FORMAT HUMAN-READABLE NOTES
+# FORMATTING HELPERS
 # ============================================================
 
 def format_action_items(items):
-    """
-    Formats action items for text/WhatsApp output.
-    """
 
     if not items:
         return "None."
@@ -330,13 +458,12 @@ def format_action_items(items):
                 f"- {item.task}"
             )
 
-    return "\n".join(lines)
+    return "\n".join(
+        lines
+    )
 
 
 def format_list(items):
-    """
-    Formats a normal list.
-    """
 
     if not items:
         return "None."
@@ -348,9 +475,6 @@ def format_list(items):
 
 
 def format_decisions(decisions):
-    """
-    Formats decisions.
-    """
 
     if not decisions:
         return "None."
@@ -361,10 +485,11 @@ def format_decisions(decisions):
     )
 
 
+# ============================================================
+# HUMAN READABLE NOTES
+# ============================================================
+
 def create_text_notes(notes):
-    """
-    Creates the human-readable meeting notes.
-    """
 
     text = f"""
 ============================================================
@@ -413,9 +538,6 @@ FOLLOW-UP
 # ============================================================
 
 def save_text_notes(text):
-    """
-    Saves readable meeting notes.
-    """
 
     with open(
         TEXT_OUTPUT_FILE,
@@ -423,7 +545,9 @@ def save_text_notes(text):
         encoding="utf-8",
     ) as file:
 
-        file.write(text)
+        file.write(
+            text
+        )
 
     print(
         f"Saved readable notes: "
@@ -435,7 +559,9 @@ def save_text_notes(text):
 # MAIN
 # ============================================================
 
-def summarize_meeting():
+def summarize_meeting(
+    status_callback=None,
+):
 
     print()
     print(
@@ -455,7 +581,7 @@ def summarize_meeting():
     )
 
     # --------------------------------------------------------
-    # STEP 1
+    # LOAD
     # --------------------------------------------------------
 
     print()
@@ -463,14 +589,22 @@ def summarize_meeting():
         "STEP 1/3 — Loading transcript"
     )
 
-    transcript = load_transcript()
+    if status_callback:
+
+        status_callback(
+            "Loading meeting transcript..."
+        )
+
+    transcript = (
+        load_transcript()
+    )
 
     print(
         f"Loaded {len(transcript)} characters."
     )
 
     # --------------------------------------------------------
-    # STEP 2
+    # GENERATE
     # --------------------------------------------------------
 
     print()
@@ -478,12 +612,19 @@ def summarize_meeting():
         "STEP 2/3 — Generating meeting intelligence"
     )
 
+    if status_callback:
+
+        status_callback(
+            "Generating meeting notes..."
+        )
+
     notes = generate_meeting_notes(
-        transcript
+        transcript,
+        status_callback=status_callback,
     )
 
     # --------------------------------------------------------
-    # STEP 3
+    # SAVE
     # --------------------------------------------------------
 
     print()
@@ -491,12 +632,20 @@ def summarize_meeting():
         "STEP 3/3 — Saving meeting notes"
     )
 
+    if status_callback:
+
+        status_callback(
+            "Saving meeting notes..."
+        )
+
     save_json(
         notes
     )
 
-    text_notes = create_text_notes(
-        notes
+    text_notes = (
+        create_text_notes(
+            notes
+        )
     )
 
     save_text_notes(
@@ -504,7 +653,7 @@ def summarize_meeting():
     )
 
     # --------------------------------------------------------
-    # OUTPUT
+    # DONE
     # --------------------------------------------------------
 
     print()
@@ -520,25 +669,16 @@ def summarize_meeting():
 
     print()
 
-    print(text_notes)
-
-    print()
-
     print(
-        "Created:"
-    )
-
-    print(
-        f"  {JSON_OUTPUT_FILE.name}"
-    )
-
-    print(
-        f"  {TEXT_OUTPUT_FILE.name}"
+        text_notes
     )
 
     print()
 
-    return notes, text_notes
+    return (
+        notes,
+        text_notes,
+    )
 
 
 # ============================================================
@@ -546,4 +686,5 @@ def summarize_meeting():
 # ============================================================
 
 if __name__ == "__main__":
+
     summarize_meeting()
