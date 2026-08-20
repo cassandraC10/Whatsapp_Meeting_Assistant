@@ -403,6 +403,12 @@ def transcribe_meeting():
         "----------------------------------------"
     )
 
+    return {
+        "my_transcript": my_transcript,
+        "client_transcript": client_transcript,
+        "combined_transcript": combined_transcript,
+    }
+
 
 # ============================================================
 # ENTRY POINT

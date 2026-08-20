@@ -538,6 +538,8 @@ def summarize_meeting():
 
     print()
 
+    return notes, text_notes
+
 
 # ============================================================
 # ENTRY POINT
