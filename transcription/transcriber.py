@@ -5,7 +5,6 @@ from pathlib import Path
 from dotenv import load_dotenv
 from google import genai
 
-
 # ============================================================
 # CONFIG
 # ============================================================
@@ -21,9 +20,7 @@ if not API_KEY:
         "GEMINI_API_KEY=your_key_here"
     )
 
-client = genai.Client(
-    api_key=API_KEY
-)
+client = genai.Client(api_key=API_KEY)
 
 
 # ============================================================
@@ -65,40 +62,30 @@ RETRY_DELAYS = [
 # AUDIO VALIDATION
 # ============================================================
 
+
 def validate_audio_file(audio_path):
 
     if not audio_path.exists():
 
-        raise FileNotFoundError(
-            f"Audio file does not exist:\n"
-            f"{audio_path}"
-        )
+        raise FileNotFoundError(f"Audio file does not exist:\n" f"{audio_path}")
 
     if audio_path.stat().st_size == 0:
 
-        raise RuntimeError(
-            f"Audio file is empty:\n"
-            f"{audio_path}"
-        )
+        raise RuntimeError(f"Audio file is empty:\n" f"{audio_path}")
 
 
 # ============================================================
 # UPLOAD AUDIO
 # ============================================================
 
+
 def upload_audio(audio_path):
 
-    print(
-        f"Uploading {audio_path.name}..."
-    )
+    print(f"Uploading {audio_path.name}...")
 
-    uploaded_file = client.files.upload(
-        file=str(audio_path)
-    )
+    uploaded_file = client.files.upload(file=str(audio_path))
 
-    print(
-        f"Uploaded {audio_path.name}"
-    )
+    print(f"Uploaded {audio_path.name}")
 
     return uploaded_file
 
@@ -106,6 +93,7 @@ def upload_audio(audio_path):
 # ============================================================
 # TEMPORARY GEMINI ERROR DETECTION
 # ============================================================
+
 
 def is_temporary_gemini_error(error):
     """
@@ -125,15 +113,13 @@ def is_temporary_gemini_error(error):
         "deadline exceeded",
     ]
 
-    return any(
-        marker in message
-        for marker in temporary_markers
-    )
+    return any(marker in message for marker in temporary_markers)
 
 
 # ============================================================
 # GENERATE WITH RETRY
 # ============================================================
+
 
 def generate_with_retry(
     model,
@@ -156,16 +142,11 @@ def generate_with_retry(
 
         try:
 
-            print(
-                f"Gemini attempt "
-                f"{attempt}/{MAX_RETRIES}..."
-            )
+            print(f"Gemini attempt " f"{attempt}/{MAX_RETRIES}...")
 
-            response = (
-                client.models.generate_content(
-                    model=model,
-                    contents=contents,
-                )
+            response = client.models.generate_content(
+                model=model,
+                contents=contents,
             )
 
             return response
@@ -174,11 +155,7 @@ def generate_with_retry(
 
             last_error = error
 
-            temporary = (
-                is_temporary_gemini_error(
-                    error
-                )
-            )
+            temporary = is_temporary_gemini_error(error)
 
             if not temporary:
                 raise
@@ -186,9 +163,7 @@ def generate_with_retry(
             if attempt >= MAX_RETRIES:
                 break
 
-            delay = RETRY_DELAYS[
-                attempt - 1
-            ]
+            delay = RETRY_DELAYS[attempt - 1]
 
             message = (
                 f"Gemini is temporarily busy. "
@@ -214,23 +189,18 @@ def generate_with_retry(
 # TRANSCRIBE AUDIO
 # ============================================================
 
+
 def transcribe_audio(
     audio_path,
     speaker_label,
     status_callback=None,
 ):
 
-    validate_audio_file(
-        audio_path
-    )
+    validate_audio_file(audio_path)
 
-    uploaded_audio = upload_audio(
-        audio_path
-    )
+    uploaded_audio = upload_audio(audio_path)
 
-    print(
-        f"Transcribing {speaker_label}..."
-    )
+    print(f"Transcribing {speaker_label}...")
 
     prompt = f"""
 You are transcribing one speaker's audio from a business meeting.
@@ -267,18 +237,11 @@ Rules:
 
     if not response.text:
 
-        raise RuntimeError(
-            f"Gemini returned no transcript "
-            f"for {speaker_label}."
-        )
+        raise RuntimeError(f"Gemini returned no transcript " f"for {speaker_label}.")
 
-    transcript = (
-        response.text.strip()
-    )
+    transcript = response.text.strip()
 
-    print(
-        f"{speaker_label} transcription complete."
-    )
+    print(f"{speaker_label} transcription complete.")
 
     return transcript
 
@@ -286,6 +249,7 @@ Rules:
 # ============================================================
 # SAVE TEXT FILE
 # ============================================================
+
 
 def save_transcript(
     transcript,
@@ -298,18 +262,15 @@ def save_transcript(
         encoding="utf-8",
     ) as file:
 
-        file.write(
-            transcript
-        )
+        file.write(transcript)
 
-    print(
-        f"Saved {output_path.name}"
-    )
+    print(f"Saved {output_path.name}")
 
 
 # ============================================================
 # CREATE COMBINED TRANSCRIPT
 # ============================================================
+
 
 def create_combined_transcript(
     my_transcript,
@@ -338,41 +299,30 @@ CLIENT / REMOTE SPEAKER
 # TRANSCRIBE COMPLETE MEETING
 # ============================================================
 
+
 def transcribe_meeting(
     status_callback=None,
 ):
 
     print()
-    print(
-        "========================================"
-    )
-    print(
-        "      Gemini Meeting Transcriber"
-    )
-    print(
-        "========================================"
-    )
+    print("========================================")
+    print("      Gemini Meeting Transcriber")
+    print("========================================")
 
     print()
 
-    print(
-        f"Model: {MODEL_NAME}"
-    )
+    print(f"Model: {MODEL_NAME}")
 
     # --------------------------------------------------------
     # LOCAL / ME
     # --------------------------------------------------------
 
     print()
-    print(
-        "STEP 1/3 — Transcribing local speaker"
-    )
+    print("STEP 1/3 — Transcribing local speaker")
 
     if status_callback:
 
-        status_callback(
-            "Transcribing local speaker..."
-        )
+        status_callback("Transcribing local speaker...")
 
     my_transcript = transcribe_audio(
         MIC_AUDIO_FILE,
@@ -391,15 +341,11 @@ def transcribe_meeting(
 
     print()
 
-    print(
-        "STEP 2/3 — Transcribing remote speaker"
-    )
+    print("STEP 2/3 — Transcribing remote speaker")
 
     if status_callback:
 
-        status_callback(
-            "Transcribing remote speaker..."
-        )
+        status_callback("Transcribing remote speaker...")
 
     client_transcript = transcribe_audio(
         SYSTEM_AUDIO_FILE,
@@ -418,15 +364,11 @@ def transcribe_meeting(
 
     print()
 
-    print(
-        "STEP 3/3 — Creating combined transcript"
-    )
+    print("STEP 3/3 — Creating combined transcript")
 
-    combined_transcript = (
-        create_combined_transcript(
-            my_transcript,
-            client_transcript,
-        )
+    combined_transcript = create_combined_transcript(
+        my_transcript,
+        client_transcript,
     )
 
     save_transcript(
@@ -436,15 +378,9 @@ def transcribe_meeting(
 
     print()
 
-    print(
-        "========================================"
-    )
-    print(
-        "              SUCCESS"
-    )
-    print(
-        "========================================"
-    )
+    print("========================================")
+    print("              SUCCESS")
+    print("========================================")
 
     return {
         "my_transcript": my_transcript,

@@ -2,13 +2,11 @@ import json
 import os
 import time
 from pathlib import Path
-from typing import Optional
 
 from dotenv import load_dotenv
 from google import genai
 from google.genai import types
 from pydantic import BaseModel, Field
-
 
 # ============================================================
 # CONFIG
@@ -26,9 +24,7 @@ if not API_KEY:
     )
 
 
-client = genai.Client(
-    api_key=API_KEY
-)
+client = genai.Client(api_key=API_KEY)
 
 
 # ============================================================
@@ -37,17 +33,11 @@ client = genai.Client(
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
-TRANSCRIPT_FILE = (
-    PROJECT_ROOT / "combined_transcript.txt"
-)
+TRANSCRIPT_FILE = PROJECT_ROOT / "combined_transcript.txt"
 
-JSON_OUTPUT_FILE = (
-    PROJECT_ROOT / "meeting_notes.json"
-)
+JSON_OUTPUT_FILE = PROJECT_ROOT / "meeting_notes.json"
 
-TEXT_OUTPUT_FILE = (
-    PROJECT_ROOT / "meeting_notes.txt"
-)
+TEXT_OUTPUT_FILE = PROJECT_ROOT / "meeting_notes.txt"
 
 
 # ============================================================
@@ -74,16 +64,16 @@ RETRY_DELAYS = [
 # STRUCTURED DATA MODELS
 # ============================================================
 
+
 class ActionItem(BaseModel):
 
     task: str = Field(
         description=(
-            "The exact task or responsibility "
-            "that was agreed during the meeting."
+            "The exact task or responsibility " "that was agreed during the meeting."
         )
     )
 
-    deadline: Optional[str] = Field(
+    deadline: str | None = Field(
         default=None,
         description=(
             "The deadline mentioned in the meeting. "
@@ -95,26 +85,17 @@ class ActionItem(BaseModel):
 class Decision(BaseModel):
 
     decision: str = Field(
-        description=(
-            "A decision that was actually agreed "
-            "during the meeting."
-        )
+        description=("A decision that was actually agreed " "during the meeting.")
     )
 
 
 class MeetingNotes(BaseModel):
 
-    title: str = Field(
-        description=(
-            "A concise descriptive title "
-            "for the meeting."
-        )
-    )
+    title: str = Field(description=("A concise descriptive title " "for the meeting."))
 
     summary: str = Field(
         description=(
-            "A concise summary of what the meeting "
-            "was about and its main outcome."
+            "A concise summary of what the meeting " "was about and its main outcome."
         )
     )
 
@@ -126,24 +107,15 @@ class MeetingNotes(BaseModel):
     )
 
     decisions: list[Decision] = Field(
-        description=(
-            "Decisions explicitly made or agreed "
-            "during the meeting."
-        )
+        description=("Decisions explicitly made or agreed " "during the meeting.")
     )
 
     my_action_items: list[ActionItem] = Field(
-        description=(
-            "Tasks explicitly belonging to "
-            "ME / LOCAL SPEAKER."
-        )
+        description=("Tasks explicitly belonging to " "ME / LOCAL SPEAKER.")
     )
 
     client_action_items: list[ActionItem] = Field(
-        description=(
-            "Tasks explicitly belonging to "
-            "CLIENT / REMOTE SPEAKER."
-        )
+        description=("Tasks explicitly belonging to " "CLIENT / REMOTE SPEAKER.")
     )
 
     deadlines: list[str] = Field(
@@ -153,7 +125,7 @@ class MeetingNotes(BaseModel):
         )
     )
 
-    follow_up: Optional[str] = Field(
+    follow_up: str | None = Field(
         default=None,
         description=(
             "Any explicitly agreed follow-up meeting, "
@@ -166,6 +138,7 @@ class MeetingNotes(BaseModel):
 # ============================================================
 # TEMPORARY GEMINI ERROR DETECTION
 # ============================================================
+
 
 def is_temporary_gemini_error(error):
     """
@@ -186,15 +159,13 @@ def is_temporary_gemini_error(error):
         "deadline exceeded",
     ]
 
-    return any(
-        marker in message
-        for marker in temporary_markers
-    )
+    return any(marker in message for marker in temporary_markers)
 
 
 # ============================================================
 # GEMINI RETRY WRAPPER
 # ============================================================
+
 
 def generate_notes_with_retry(
     prompt,
@@ -215,17 +186,12 @@ def generate_notes_with_retry(
 
         try:
 
-            print(
-                f"Gemini notes attempt "
-                f"{attempt}/{MAX_RETRIES}..."
-            )
+            print(f"Gemini notes attempt " f"{attempt}/{MAX_RETRIES}...")
 
-            response = (
-                client.models.generate_content(
-                    model=MODEL_NAME,
-                    contents=prompt,
-                    config=config,
-                )
+            response = client.models.generate_content(
+                model=MODEL_NAME,
+                contents=prompt,
+                config=config,
             )
 
             return response
@@ -234,17 +200,13 @@ def generate_notes_with_retry(
 
             last_error = error
 
-            if not is_temporary_gemini_error(
-                error
-            ):
+            if not is_temporary_gemini_error(error):
                 raise
 
             if attempt >= MAX_RETRIES:
                 break
 
-            delay = RETRY_DELAYS[
-                attempt - 1
-            ]
+            delay = RETRY_DELAYS[attempt - 1]
 
             message = (
                 "Gemini is busy while generating "
@@ -256,13 +218,9 @@ def generate_notes_with_retry(
             print(message)
 
             if status_callback:
-                status_callback(
-                    message
-                )
+                status_callback(message)
 
-            time.sleep(
-                delay
-            )
+            time.sleep(delay)
 
     raise RuntimeError(
         "Gemini could not generate meeting notes "
@@ -275,28 +233,18 @@ def generate_notes_with_retry(
 # LOAD TRANSCRIPT
 # ============================================================
 
+
 def load_transcript():
 
     if not TRANSCRIPT_FILE.exists():
 
-        raise FileNotFoundError(
-            f"Transcript not found:\n"
-            f"{TRANSCRIPT_FILE}"
-        )
+        raise FileNotFoundError(f"Transcript not found:\n" f"{TRANSCRIPT_FILE}")
 
-    transcript = (
-        TRANSCRIPT_FILE
-        .read_text(
-            encoding="utf-8"
-        )
-        .strip()
-    )
+    transcript = TRANSCRIPT_FILE.read_text(encoding="utf-8").strip()
 
     if not transcript:
 
-        raise RuntimeError(
-            "combined_transcript.txt is empty."
-        )
+        raise RuntimeError("combined_transcript.txt is empty.")
 
     return transcript
 
@@ -305,15 +253,14 @@ def load_transcript():
 # GENERATE MEETING INTELLIGENCE
 # ============================================================
 
+
 def generate_meeting_notes(
     transcript,
     status_callback=None,
 ):
 
     print()
-    print(
-        "Analyzing meeting transcript..."
-    )
+    print("Analyzing meeting transcript...")
 
     prompt = f"""
 You are an AI meeting assistant.
@@ -391,16 +338,9 @@ TRANSCRIPT:
 
     if not response.text:
 
-        raise RuntimeError(
-            "Gemini returned an empty response."
-        )
+        raise RuntimeError("Gemini returned an empty response.")
 
-    notes = (
-        MeetingNotes
-        .model_validate_json(
-            response.text
-        )
-    )
+    notes = MeetingNotes.model_validate_json(response.text)
 
     return notes
 
@@ -408,6 +348,7 @@ TRANSCRIPT:
 # ============================================================
 # SAVE JSON
 # ============================================================
+
 
 def save_json(notes):
 
@@ -426,15 +367,13 @@ def save_json(notes):
             ensure_ascii=False,
         )
 
-    print(
-        f"Saved structured notes: "
-        f"{JSON_OUTPUT_FILE.name}"
-    )
+    print(f"Saved structured notes: " f"{JSON_OUTPUT_FILE.name}")
 
 
 # ============================================================
 # FORMATTING HELPERS
 # ============================================================
+
 
 def format_action_items(items):
 
@@ -447,20 +386,13 @@ def format_action_items(items):
 
         if item.deadline:
 
-            lines.append(
-                f"- {item.task} "
-                f"(Deadline: {item.deadline})"
-            )
+            lines.append(f"- {item.task} " f"(Deadline: {item.deadline})")
 
         else:
 
-            lines.append(
-                f"- {item.task}"
-            )
+            lines.append(f"- {item.task}")
 
-    return "\n".join(
-        lines
-    )
+    return "\n".join(lines)
 
 
 def format_list(items):
@@ -468,10 +400,7 @@ def format_list(items):
     if not items:
         return "None."
 
-    return "\n".join(
-        f"- {item}"
-        for item in items
-    )
+    return "\n".join(f"- {item}" for item in items)
 
 
 def format_decisions(decisions):
@@ -479,15 +408,13 @@ def format_decisions(decisions):
     if not decisions:
         return "None."
 
-    return "\n".join(
-        f"- {item.decision}"
-        for item in decisions
-    )
+    return "\n".join(f"- {item.decision}" for item in decisions)
 
 
 # ============================================================
 # HUMAN READABLE NOTES
 # ============================================================
+
 
 def create_text_notes(notes):
 
@@ -537,6 +464,7 @@ FOLLOW-UP
 # SAVE TEXT
 # ============================================================
 
+
 def save_text_notes(text):
 
     with open(
@@ -545,78 +473,54 @@ def save_text_notes(text):
         encoding="utf-8",
     ) as file:
 
-        file.write(
-            text
-        )
+        file.write(text)
 
-    print(
-        f"Saved readable notes: "
-        f"{TEXT_OUTPUT_FILE.name}"
-    )
+    print(f"Saved readable notes: " f"{TEXT_OUTPUT_FILE.name}")
 
 
 # ============================================================
 # MAIN
 # ============================================================
 
+
 def summarize_meeting(
     status_callback=None,
 ):
 
     print()
-    print(
-        "========================================"
-    )
-    print(
-        "       AI Meeting Intelligence"
-    )
-    print(
-        "========================================"
-    )
+    print("========================================")
+    print("       AI Meeting Intelligence")
+    print("========================================")
 
     print()
 
-    print(
-        f"Model: {MODEL_NAME}"
-    )
+    print(f"Model: {MODEL_NAME}")
 
     # --------------------------------------------------------
     # LOAD
     # --------------------------------------------------------
 
     print()
-    print(
-        "STEP 1/3 — Loading transcript"
-    )
+    print("STEP 1/3 — Loading transcript")
 
     if status_callback:
 
-        status_callback(
-            "Loading meeting transcript..."
-        )
+        status_callback("Loading meeting transcript...")
 
-    transcript = (
-        load_transcript()
-    )
+    transcript = load_transcript()
 
-    print(
-        f"Loaded {len(transcript)} characters."
-    )
+    print(f"Loaded {len(transcript)} characters.")
 
     # --------------------------------------------------------
     # GENERATE
     # --------------------------------------------------------
 
     print()
-    print(
-        "STEP 2/3 — Generating meeting intelligence"
-    )
+    print("STEP 2/3 — Generating meeting intelligence")
 
     if status_callback:
 
-        status_callback(
-            "Generating meeting notes..."
-        )
+        status_callback("Generating meeting notes...")
 
     notes = generate_meeting_notes(
         transcript,
@@ -628,50 +532,30 @@ def summarize_meeting(
     # --------------------------------------------------------
 
     print()
-    print(
-        "STEP 3/3 — Saving meeting notes"
-    )
+    print("STEP 3/3 — Saving meeting notes")
 
     if status_callback:
 
-        status_callback(
-            "Saving meeting notes..."
-        )
+        status_callback("Saving meeting notes...")
 
-    save_json(
-        notes
-    )
+    save_json(notes)
 
-    text_notes = (
-        create_text_notes(
-            notes
-        )
-    )
+    text_notes = create_text_notes(notes)
 
-    save_text_notes(
-        text_notes
-    )
+    save_text_notes(text_notes)
 
     # --------------------------------------------------------
     # DONE
     # --------------------------------------------------------
 
     print()
-    print(
-        "========================================"
-    )
-    print(
-        "               SUCCESS"
-    )
-    print(
-        "========================================"
-    )
+    print("========================================")
+    print("               SUCCESS")
+    print("========================================")
 
     print()
 
-    print(
-        text_notes
-    )
+    print(text_notes)
 
     print()
 

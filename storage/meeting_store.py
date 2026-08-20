@@ -1,7 +1,6 @@
 import json
 import re
 import shutil
-
 from datetime import datetime
 from pathlib import Path
 
@@ -19,17 +18,12 @@ class MeetingStore:
 
         self.project_root = Path(project_root)
 
-        self.meetings_root = (
-            self.project_root
-            / "data"
-            / "meetings"
-        )
+        self.meetings_root = self.project_root / "data" / "meetings"
 
         self.meetings_root.mkdir(
             parents=True,
             exist_ok=True,
         )
-
 
     # SLUG
 
@@ -53,7 +47,6 @@ class MeetingStore:
 
         return text
 
-
     # CREATE DIRECTORY
 
     def create_meeting_directory(
@@ -61,22 +54,13 @@ class MeetingStore:
         meeting_name,
     ):
 
-        timestamp = datetime.now().strftime(
-            "%Y-%m-%d_%H-%M-%S"
-        )
+        timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
 
-        slug = self._slugify(
-            meeting_name
-        )
+        slug = self._slugify(meeting_name)
 
-        directory_name = (
-            f"{timestamp}_{slug}"
-        )
+        directory_name = f"{timestamp}_{slug}"
 
-        meeting_directory = (
-            self.meetings_root
-            / directory_name
-        )
+        meeting_directory = self.meetings_root / directory_name
 
         meeting_directory.mkdir(
             parents=True,
@@ -85,27 +69,20 @@ class MeetingStore:
 
         return meeting_directory
 
-
     # COPY FILE
-   
+
     def _copy_if_exists(
         self,
         filename,
         destination,
     ):
 
-        source = (
-            self.project_root
-            / filename
-        )
+        source = self.project_root / filename
 
         if not source.exists():
             return None
 
-        target = (
-            destination
-            / filename
-        )
+        target = destination / filename
 
         shutil.copy2(
             source,
@@ -113,7 +90,6 @@ class MeetingStore:
         )
 
         return target
-
 
     # ========================================================
     # SAVE COMPLETE MEETING
@@ -126,11 +102,7 @@ class MeetingStore:
         duration=None,
     ):
 
-        meeting_directory = (
-            self.create_meeting_directory(
-                meeting_name
-            )
-        )
+        meeting_directory = self.create_meeting_directory(meeting_name)
 
         files_to_copy = [
             "mic_raw.wav",
@@ -154,9 +126,7 @@ class MeetingStore:
 
             if saved_path:
 
-                saved_files[
-                    filename
-                ] = str(saved_path)
+                saved_files[filename] = str(saved_path)
 
         # ----------------------------------------------------
         # WHATSAPP VERSION
@@ -164,19 +134,14 @@ class MeetingStore:
 
         if whatsapp_text:
 
-            whatsapp_file = (
-                meeting_directory
-                / "whatsapp_notes.txt"
-            )
+            whatsapp_file = meeting_directory / "whatsapp_notes.txt"
 
             whatsapp_file.write_text(
                 whatsapp_text,
                 encoding="utf-8",
             )
 
-            saved_files[
-                "whatsapp_notes.txt"
-            ] = str(whatsapp_file)
+            saved_files["whatsapp_notes.txt"] = str(whatsapp_file)
 
         # ----------------------------------------------------
         # METADATA
@@ -189,10 +154,7 @@ class MeetingStore:
             "files": saved_files,
         }
 
-        metadata_file = (
-            meeting_directory
-            / "metadata.json"
-        )
+        metadata_file = meeting_directory / "metadata.json"
 
         metadata_file.write_text(
             json.dumps(

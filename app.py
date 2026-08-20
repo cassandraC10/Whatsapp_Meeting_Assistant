@@ -14,34 +14,30 @@ from storage.meeting_store import MeetingStore
 from transcription.transcriber import transcribe_meeting
 from whatsapp.formatter import format_for_whatsapp
 
-# ============================================================
-# APP THEME
-# ============================================================
 
 ctk.set_appearance_mode("dark")
 ctk.set_default_color_theme("blue")
 
 
-# ============================================================
-# APPLICATION
-# ============================================================
+class ConversationAssistantApp(ctk.CTk):
 
-class MeetingAssistantApp(ctk.CTk):
+    ACCENT = "#8B7CF6"
+    ACCENT_HOVER = "#7567DB"
+    SUCCESS = "#58D68D"
+    WARNING = "#F4C95D"
+    ERROR = "#FF6B6B"
+
+    MUTED = "#A0A0A0"
+
+    CARD = "#292929"
+    INNER_CARD = "#202020"
 
     def __init__(self):
         super().__init__()
 
-        # ====================================================
-        # WINDOW
-        # ====================================================
-
-        self.title("WhatsApp Meeting Assistant")
-        self.geometry("1050x780")
-        self.minsize(900, 680)
-
-        # ====================================================
-        # APPLICATION STATE
-        # ====================================================
+        self.title("Conversation Assistant")
+        self.geometry("1120x820")
+        self.minsize(950, 720)
 
         self.recorder = None
         self.meeting_store = MeetingStore()
@@ -55,458 +51,470 @@ class MeetingAssistantApp(ctk.CTk):
         self.current_meeting_directory = None
         self.current_recording_duration = None
 
-        # True after recorder.stop() succeeds.
-        #
-        # This allows us to retry Gemini/network processing
-        # without trying to stop the recorder twice.
-        self.audio_saved = False
+        self.current_notes = None
 
+        self.audio_saved = False
         self.last_processing_error = None
 
-        # ====================================================
-        # ROOT GRID
-        # ====================================================
+        self._configure_window()
+        self._build_header()
+        self._build_recording_card()
+        self._build_results_area()
 
+    # ========================================================
+    # WINDOW
+    # ========================================================
+
+    def _configure_window(self):
         self.grid_columnconfigure(0, weight=1)
         self.grid_rowconfigure(2, weight=1)
 
-        # ====================================================
-        # HEADER
-        # ====================================================
+    # ========================================================
+    # HEADER
+    # ========================================================
 
-        self.header = ctk.CTkFrame(
+    def _build_header(self):
+        header = ctk.CTkFrame(
             self,
-            fg_color="transparent",
+            fg_color="transparent"
         )
 
-        self.header.grid(
+        header.grid(
             row=0,
             column=0,
             sticky="ew",
-            padx=40,
-            pady=(28, 15),
+            padx=46,
+            pady=(30, 18)
         )
 
-        self.header.grid_columnconfigure(0, weight=1)
+        header.grid_columnconfigure(0, weight=1)
 
-        self.logo_label = ctk.CTkLabel(
-            self.header,
-            text="CHAT MEETING ASSISTANT",
+        brand = ctk.CTkLabel(
+            header,
+            text="CONVERSATION ASSISTANT",
             font=ctk.CTkFont(
-                size=13,
-                weight="bold",
+                size=12,
+                weight="bold"
             ),
-            text_color="#B8A7FF",
+            text_color=self.ACCENT
         )
 
-        self.logo_label.grid(
+        brand.grid(
             row=0,
             column=0,
-            sticky="w",
+            sticky="w"
         )
 
-        self.title_label = ctk.CTkLabel(
-            self.header,
-            text="Know what was said, and what happens next.",
+        title = ctk.CTkLabel(
+            header,
+            text="Keep track of what matters in every call.",
             font=ctk.CTkFont(
-                size=30,
-                weight="bold",
-            ),
+                size=31,
+                weight="bold"
+            )
         )
 
-        self.title_label.grid(
+        title.grid(
             row=1,
             column=0,
             sticky="w",
-            pady=(5, 0),
+            pady=(6, 3)
         )
 
-        self.subtitle_label = ctk.CTkLabel(
-            self.header,
+        subtitle = ctk.CTkLabel(
+            header,
             text=(
-                "Record your WhatsApp meeting, identify both speakers, "
-                "and generate structured meeting notes."
+                "Stay focused on the conversation. "
+                "Your notes, next steps and important dates will be ready when you're done."
             ),
             font=ctk.CTkFont(size=14),
-            text_color="#A5A5A5",
+            text_color=self.MUTED
         )
 
-        self.subtitle_label.grid(
+        subtitle.grid(
             row=2,
             column=0,
-            sticky="w",
-            pady=(5, 0),
+            sticky="w"
         )
 
-        # ====================================================
-        # CONTROL CARD
-        # ====================================================
+    # ========================================================
+    # RECORDING CARD
+    # ========================================================
 
-        self.control_card = ctk.CTkFrame(
+    def _build_recording_card(self):
+        self.recording_card = ctk.CTkFrame(
             self,
             corner_radius=18,
+            fg_color=self.CARD
         )
 
-        self.control_card.grid(
+        self.recording_card.grid(
             row=1,
             column=0,
             sticky="ew",
-            padx=40,
-            pady=(0, 18),
+            padx=46,
+            pady=(0, 18)
         )
 
-        self.control_card.grid_columnconfigure(
-            0,
-            weight=1,
-        )
-
-        # ----------------------------------------------------
-        # Meeting name
-        # ----------------------------------------------------
+        self.recording_card.grid_columnconfigure(0, weight=1)
 
         self.meeting_name_entry = ctk.CTkEntry(
-            self.control_card,
-            placeholder_text="Meeting name e.g. Project Timeline Review",
+            self.recording_card,
+            placeholder_text="What is this call about?",
             height=48,
             corner_radius=12,
+            border_width=1
         )
 
         self.meeting_name_entry.grid(
             row=0,
             column=0,
-            columnspan=3,
             sticky="ew",
-            padx=25,
-            pady=(25, 15),
+            padx=26,
+            pady=(24, 16)
         )
 
-        # ----------------------------------------------------
-        # Status
-        # ----------------------------------------------------
+        info_frame = ctk.CTkFrame(
+            self.recording_card,
+            fg_color="transparent"
+        )
+
+        info_frame.grid(
+            row=1,
+            column=0,
+            sticky="ew",
+            padx=28
+        )
+
+        info_frame.grid_columnconfigure(1, weight=1)
 
         self.status_label = ctk.CTkLabel(
-            self.control_card,
-            text="● READY",
+            info_frame,
+            text="● Ready",
             font=ctk.CTkFont(
                 size=16,
-                weight="bold",
+                weight="bold"
             ),
-            text_color="#B8A7FF",
+            text_color=self.ACCENT
         )
 
         self.status_label.grid(
-            row=1,
+            row=0,
             column=0,
-            sticky="w",
-            padx=(25, 10),
-            pady=10,
+            sticky="w"
         )
 
-        # ----------------------------------------------------
-        # Timer
-        # ----------------------------------------------------
-
         self.timer_label = ctk.CTkLabel(
-            self.control_card,
+            info_frame,
             text="00:00",
             font=ctk.CTkFont(
-                size=38,
-                weight="bold",
-            ),
+                size=39,
+                weight="bold"
+            )
         )
 
         self.timer_label.grid(
-            row=1,
-            column=1,
-            padx=20,
-            pady=10,
+            row=0,
+            column=1
         )
 
-        # ----------------------------------------------------
-        # Headphones reminder
-        # ----------------------------------------------------
-
-        self.headphones_label = ctk.CTkLabel(
-            self.control_card,
-            text="🎧 Headphones recommended",
+        headphone_label = ctk.CTkLabel(
+            info_frame,
+            text="🎧 Headphones give the cleanest results",
             font=ctk.CTkFont(size=12),
-            text_color="#999999",
+            text_color=self.MUTED
         )
 
-        self.headphones_label.grid(
-            row=1,
+        headphone_label.grid(
+            row=0,
             column=2,
-            sticky="e",
-            padx=(10, 25),
+            sticky="e"
         )
 
-        # ----------------------------------------------------
-        # Recording buttons
-        # ----------------------------------------------------
-
-        self.recording_buttons = ctk.CTkFrame(
-            self.control_card,
-            fg_color="transparent",
+        buttons = ctk.CTkFrame(
+            self.recording_card,
+            fg_color="transparent"
         )
 
-        self.recording_buttons.grid(
+        buttons.grid(
             row=2,
             column=0,
-            columnspan=3,
-            pady=(8, 15),
+            pady=(18, 10)
         )
 
         self.start_button = ctk.CTkButton(
-            self.recording_buttons,
-            text="▶  START MEETING",
+            buttons,
+            text="Start call notes",
             width=190,
             height=46,
             corner_radius=12,
-            command=self.start_meeting,
+            fg_color=self.ACCENT,
+            hover_color=self.ACCENT_HOVER,
+            command=self.start_meeting
         )
 
         self.start_button.grid(
             row=0,
             column=0,
-            padx=8,
+            padx=7
         )
 
         self.stop_button = ctk.CTkButton(
-            self.recording_buttons,
-            text="■  STOP & SUMMARIZE",
-            width=210,
+            buttons,
+            text="Finish & get notes",
+            width=190,
             height=46,
             corner_radius=12,
             command=self.stop_meeting,
-            state="disabled",
+            state="disabled"
         )
 
         self.stop_button.grid(
             row=0,
             column=1,
-            padx=8,
+            padx=7
         )
 
-        # ----------------------------------------------------
-        # Processing stage
-        # ----------------------------------------------------
-
         self.processing_label = ctk.CTkLabel(
-            self.control_card,
-            text="Ready for a meeting.",
+            self.recording_card,
+            text="Ready when you are.",
             font=ctk.CTkFont(size=13),
-            text_color="#AAAAAA",
+            text_color=self.MUTED
         )
 
         self.processing_label.grid(
             row=3,
             column=0,
-            columnspan=3,
-            pady=(5, 22),
+            pady=(4, 22)
         )
 
-        # ====================================================
-        # NOTES AREA
-        # ====================================================
+    # ========================================================
+    # RESULTS AREA
+    # ========================================================
 
-        self.notes_card = ctk.CTkFrame(
+    def _build_results_area(self):
+        self.results_card = ctk.CTkFrame(
             self,
             corner_radius=18,
+            fg_color=self.CARD
         )
 
-        self.notes_card.grid(
+        self.results_card.grid(
             row=2,
             column=0,
             sticky="nsew",
-            padx=40,
-            pady=(0, 20),
+            padx=46,
+            pady=(0, 28)
         )
 
-        self.notes_card.grid_columnconfigure(
-            0,
-            weight=1,
+        self.results_card.grid_columnconfigure(0, weight=1)
+        self.results_card.grid_rowconfigure(1, weight=1)
+
+        heading_frame = ctk.CTkFrame(
+            self.results_card,
+            fg_color="transparent"
         )
 
-        self.notes_card.grid_rowconfigure(
-            1,
-            weight=1,
-        )
-
-        self.notes_header = ctk.CTkLabel(
-            self.notes_card,
-            text="MEETING NOTES",
-            font=ctk.CTkFont(
-                size=15,
-                weight="bold",
-            ),
-        )
-
-        self.notes_header.grid(
+        heading_frame.grid(
             row=0,
             column=0,
+            sticky="ew",
+            padx=26,
+            pady=(20, 8)
+        )
+
+        heading_frame.grid_columnconfigure(0, weight=1)
+
+        self.results_heading = ctk.CTkLabel(
+            heading_frame,
+            text="After the call",
+            font=ctk.CTkFont(
+                size=17,
+                weight="bold"
+            )
+        )
+
+        self.results_heading.grid(
+            row=0,
+            column=0,
+            sticky="w"
+        )
+
+        self.results_subtitle = ctk.CTkLabel(
+            heading_frame,
+            text="Your notes will show up here.",
+            font=ctk.CTkFont(size=12),
+            text_color=self.MUTED
+        )
+
+        self.results_subtitle.grid(
+            row=1,
+            column=0,
             sticky="w",
-            padx=25,
-            pady=(20, 8),
+            pady=(2, 0)
         )
 
-        self.notes_box = ctk.CTkTextbox(
-            self.notes_card,
-            wrap="word",
+        self.notes_scroll = ctk.CTkScrollableFrame(
+            self.results_card,
             corner_radius=12,
-            font=ctk.CTkFont(size=14),
+            fg_color=self.INNER_CARD
         )
 
-        self.notes_box.grid(
+        self.notes_scroll.grid(
             row=1,
             column=0,
             sticky="nsew",
-            padx=25,
-            pady=(0, 18),
+            padx=26,
+            pady=(8, 16)
         )
 
-        self.notes_box.insert(
-            "1.0",
-            (
-                "Your meeting summary, decisions, deadlines "
-                "and action items will appear here."
-            ),
+        self.notes_scroll.grid_columnconfigure(0, weight=1)
+
+        self._show_empty_state()
+
+        self.action_frame = ctk.CTkFrame(
+            self.results_card,
+            fg_color="transparent"
         )
 
-        self.notes_box.configure(
-            state="disabled"
-        )
-
-        # ====================================================
-        # OUTPUT ACTIONS
-        # ====================================================
-
-        self.output_frame = ctk.CTkFrame(
-            self.notes_card,
-            fg_color="transparent",
-        )
-
-        self.output_frame.grid(
+        self.action_frame.grid(
             row=2,
             column=0,
-            pady=(0, 22),
+            pady=(0, 20)
         )
 
         self.transcript_button = ctk.CTkButton(
-            self.output_frame,
-            text="VIEW TRANSCRIPT",
-            width=155,
+            self.action_frame,
+            text="Transcript",
+            width=125,
             command=self.show_transcript,
-            state="disabled",
+            state="disabled"
         )
 
         self.transcript_button.grid(
             row=0,
             column=0,
-            padx=5,
+            padx=5
         )
 
         self.download_button = ctk.CTkButton(
-            self.output_frame,
-            text="DOWNLOAD NOTES",
-            width=155,
+            self.action_frame,
+            text="Download notes",
+            width=145,
             command=self.download_notes,
-            state="disabled",
+            state="disabled"
         )
 
         self.download_button.grid(
             row=0,
             column=1,
-            padx=5,
+            padx=5
         )
 
         self.whatsapp_button = ctk.CTkButton(
-            self.output_frame,
-            text="SEND TO WHATSAPP",
-            width=165,
+            self.action_frame,
+            text="Send to WhatsApp",
+            width=150,
+            fg_color=self.ACCENT,
+            hover_color=self.ACCENT_HOVER,
             command=self.send_to_whatsapp,
-            state="disabled",
+            state="disabled"
         )
 
         self.whatsapp_button.grid(
             row=0,
             column=2,
-            padx=5,
+            padx=5
         )
 
         self.folder_button = ctk.CTkButton(
-            self.output_frame,
-            text="OPEN SAVED MEETING",
-            width=175,
+            self.action_frame,
+            text="Open files",
+            width=120,
             command=self.open_meeting_folder,
-            state="disabled",
+            state="disabled"
         )
 
         self.folder_button.grid(
             row=0,
             column=3,
-            padx=5,
+            padx=5
         )
 
-        # ====================================================
-        # RETRY BUTTON
-        # ====================================================
-
         self.retry_button = ctk.CTkButton(
-            self.notes_card,
-            text="↻  RETRY PROCESSING",
-            width=200,
+            self.results_card,
+            text="Try again",
+            width=140,
+            fg_color=self.WARNING,
+            text_color="#111111",
             command=self.retry_processing,
-            state="disabled",
+            state="disabled"
         )
 
         self.retry_button.grid(
             row=3,
             column=0,
-            pady=(0, 20),
+            pady=(0, 18)
         )
 
     # ========================================================
-    # START MEETING
+    # EMPTY RESULTS
+    # ========================================================
+
+    def _clear_notes_area(self):
+        for widget in self.notes_scroll.winfo_children():
+            widget.destroy()
+
+    def _show_empty_state(self):
+        self._clear_notes_area()
+
+        empty = ctk.CTkLabel(
+            self.notes_scroll,
+            text=(
+                "Nothing to review yet.\n\n"
+                "Start a call and your notes will appear here when you're finished."
+            ),
+            justify="center",
+            font=ctk.CTkFont(size=14),
+            text_color=self.MUTED
+        )
+
+        empty.grid(
+            row=0,
+            column=0,
+            padx=30,
+            pady=70
+        )
+
+    # ========================================================
+    # START
     # ========================================================
 
     def start_meeting(self):
-
-        meeting_name = (
-            self.meeting_name_entry
-            .get()
-            .strip()
-        )
+        meeting_name = self.meeting_name_entry.get().strip()
 
         if not meeting_name:
-
             self.set_status(
-                "Please enter a meeting name."
+                "Give this call a name first."
             )
-
             return
 
         try:
-
             self.recorder = MeetingRecorder()
             self.recorder.start()
 
         except Exception as error:
-
             self.set_status(
-                f"Recording error: {error}"
+                f"Couldn't start the recording: {error}"
             )
-
             return
-
-        # ----------------------------------------------------
-        # Reset meeting state
-        # ----------------------------------------------------
 
         self.current_meeting_name = meeting_name
         self.current_whatsapp_text = None
         self.current_text_notes = None
         self.current_meeting_directory = None
         self.current_recording_duration = None
+        self.current_notes = None
 
         self.audio_saved = False
         self.last_processing_error = None
@@ -514,17 +522,13 @@ class MeetingAssistantApp(ctk.CTk):
         self.recording = True
         self.start_time = time.time()
 
-        # ----------------------------------------------------
-        # UI
-        # ----------------------------------------------------
-
         self.status_label.configure(
-            text="● RECORDING",
-            text_color="#FF6B6B",
+            text="● Listening",
+            text_color=self.ERROR
         )
 
         self.processing_label.configure(
-            text="Recording microphone + WhatsApp audio..."
+            text="Stay focused on your call — we've got the notes."
         )
 
         self.start_button.configure(
@@ -535,36 +539,41 @@ class MeetingAssistantApp(ctk.CTk):
             state="normal"
         )
 
+        self.meeting_name_entry.configure(
+            state="disabled"
+        )
+
         self.retry_button.configure(
             state="disabled"
         )
 
         self.disable_output_buttons()
 
-        self.meeting_name_entry.configure(
-            state="disabled"
+        self.results_heading.configure(
+            text="Call in progress"
         )
 
-        self.notes_box.configure(
-            state="normal"
+        self.results_subtitle.configure(
+            text="Your notes will be ready when you finish."
         )
 
-        self.notes_box.delete(
-            "1.0",
-            "end",
-        )
+        self._clear_notes_area()
 
-        self.notes_box.insert(
-            "1.0",
-            (
-                "Recording in progress...\n\n"
-                "Your meeting notes will appear here "
-                "after processing."
+        recording_message = ctk.CTkLabel(
+            self.notes_scroll,
+            text=(
+                "Listening to the conversation…\n\n"
+                "You can keep your attention on the call."
             ),
+            justify="center",
+            font=ctk.CTkFont(size=15),
+            text_color=self.MUTED
         )
 
-        self.notes_box.configure(
-            state="disabled"
+        recording_message.grid(
+            row=0,
+            column=0,
+            pady=70
         )
 
         self.update_timer()
@@ -574,13 +583,11 @@ class MeetingAssistantApp(ctk.CTk):
     # ========================================================
 
     def update_timer(self):
-
         if not self.recording:
             return
 
         elapsed = int(
-            time.time()
-            - self.start_time
+            time.time() - self.start_time
         )
 
         minutes = elapsed // 60
@@ -592,7 +599,7 @@ class MeetingAssistantApp(ctk.CTk):
 
         self.after(
             1000,
-            self.update_timer,
+            self.update_timer
         )
 
     # ========================================================
@@ -600,7 +607,6 @@ class MeetingAssistantApp(ctk.CTk):
     # ========================================================
 
     def stop_meeting(self):
-
         if not self.recording:
             return
 
@@ -611,293 +617,214 @@ class MeetingAssistantApp(ctk.CTk):
         )
 
         self.status_label.configure(
-            text="● PROCESSING",
-            text_color="#F4C95D",
+            text="● Working on your notes",
+            text_color=self.WARNING
         )
 
         self.processing_label.configure(
-            text="Saving recording..."
+            text="Saving your call…"
+        )
+
+        self.results_heading.configure(
+            text="Getting your notes ready"
+        )
+
+        self.results_subtitle.configure(
+            text="This normally takes a moment."
         )
 
         worker = threading.Thread(
             target=self.process_meeting,
-            kwargs={
-                "retry_only": False
-            },
-            daemon=True,
+            kwargs={"retry_only": False},
+            daemon=True
         )
 
         worker.start()
 
     # ========================================================
-    # PROCESS MEETING
+    # PROCESSING
     # ========================================================
 
-    def process_meeting(
-        self,
-        retry_only=False,
-    ):
-
+    def process_meeting(self, retry_only=False):
         try:
-
-            # =================================================
-            # AUDIO
-            # =================================================
-
             if not retry_only:
-
                 self.update_processing(
-                    "Step 1/5 — Saving recording..."
+                    "Saving your call…"
                 )
 
-                recording_result = (
-                    self.recorder.stop()
-                )
+                recording_result = self.recorder.stop()
 
                 self.current_recording_duration = (
-                    recording_result[
-                        "duration"
-                    ]
+                    recording_result["duration"]
                 )
 
                 self.audio_saved = True
 
-            # =================================================
-            # TRANSCRIPTION
-            # =================================================
-
             self.update_processing(
-                "Step 2/5 — Transcribing speakers..."
+                "Turning the conversation into notes…"
             )
 
             transcribe_meeting(
-                status_callback=(
-                    self.update_processing
-                )
+                status_callback=self.update_processing
             )
-
-            # =================================================
-            # AI NOTES
-            # =================================================
 
             self.update_processing(
-                "Step 3/5 — Generating meeting notes..."
+                "Pulling out the important parts…"
             )
 
-            notes, text_notes = (
-                summarize_meeting(
-                    status_callback=(
-                        self.update_processing
-                    )
-                )
+            notes, text_notes = summarize_meeting(
+                status_callback=self.update_processing
             )
 
-            self.current_text_notes = (
-                text_notes
-            )
-
-            # =================================================
-            # WHATSAPP FORMAT
-            # =================================================
+            self.current_notes = notes
+            self.current_text_notes = text_notes
 
             self.update_processing(
-                "Step 4/5 — Preparing WhatsApp summary..."
+                "Getting everything ready to share…"
             )
 
-            whatsapp_text = (
-                format_for_whatsapp(
-                    notes
-                )
+            whatsapp_text = format_for_whatsapp(
+                notes
             )
 
-            self.current_whatsapp_text = (
-                whatsapp_text
-            )
-
-            # =================================================
-            # STORAGE
-            # =================================================
+            self.current_whatsapp_text = whatsapp_text
 
             self.update_processing(
-                "Step 5/5 — Saving meeting history..."
+                "Saving this call…"
             )
 
-            meeting_directory = (
-                self.meeting_store.save_meeting(
-                    meeting_name=(
-                        self.current_meeting_name
-                    ),
-                    whatsapp_text=(
-                        whatsapp_text
-                    ),
-                    duration=(
-                        self.current_recording_duration
-                    ),
-                )
+            meeting_directory = self.meeting_store.save_meeting(
+                meeting_name=self.current_meeting_name,
+                whatsapp_text=whatsapp_text,
+                duration=self.current_recording_duration
             )
 
-            self.current_meeting_directory = (
-                meeting_directory
-            )
-
-            # =================================================
-            # COMPLETE
-            # =================================================
+            self.current_meeting_directory = meeting_directory
 
             self.after(
                 0,
-                lambda: self.display_notes(
-                    text_notes
-                ),
+                lambda: self.display_notes(notes)
             )
 
         except Exception as error:
-
-            self.last_processing_error = (
-                error
-            )
+            self.last_processing_error = error
 
             self.after(
                 0,
-                lambda err=error:
-                self.processing_failed(
-                    err
-                ),
+                lambda err=error: self.processing_failed(err)
             )
 
     # ========================================================
-    # NETWORK ERROR CHECK
+    # RESULTS
     # ========================================================
 
-    def is_network_error(
-        self,
-        error,
-    ):
+    def display_notes(self, notes):
+        self.status_label.configure(
+            text="✓ Done",
+            text_color=self.SUCCESS
+        )
 
-        message = str(
-            error
-        ).lower()
+        self.processing_label.configure(
+            text="Your call is saved and your notes are ready."
+        )
 
-        indicators = [
-            "connection",
-            "network",
-            "internet",
-            "timeout",
-            "timed out",
-            "dns",
-            "name resolution",
-            "getaddrinfo",
-            "503",
-            "unavailable",
-            "429",
-            "resource exhausted",
-            "high demand",
+        self.results_heading.configure(
+            text=self.current_meeting_name
+        )
+
+        self.results_subtitle.configure(
+            text="Here's what came out of the conversation."
+        )
+
+        self._clear_notes_area()
+
+        row = 0
+
+        self._add_section(
+            row,
+            "What you talked about",
+            notes.summary
+        )
+
+        row += 1
+
+        self._add_list_section(
+            row,
+            "Key points",
+            notes.key_points
+        )
+
+        row += 1
+
+        my_tasks = [
+            self._format_task(item)
+            for item in notes.my_action_items
         ]
 
-        return any(
-            word in message
-            for word in indicators
+        their_tasks = [
+            self._format_task(item)
+            for item in notes.client_action_items
+        ]
+
+        actions_frame = ctk.CTkFrame(
+            self.notes_scroll,
+            fg_color="transparent"
         )
 
-    # ========================================================
-    # RETRY PROCESSING
-    # ========================================================
-
-    def retry_processing(self):
-
-        if not self.audio_saved:
-
-            self.set_status(
-                "No saved recording is available to retry."
-            )
-
-            return
-
-        self.retry_button.configure(
-            state="disabled"
+        actions_frame.grid(
+            row=row,
+            column=0,
+            sticky="ew",
+            padx=4,
+            pady=5
         )
 
-        self.start_button.configure(
-            state="disabled"
+        actions_frame.grid_columnconfigure(
+            (0, 1),
+            weight=1
         )
 
-        self.status_label.configure(
-            text="● RETRYING",
-            text_color="#F4C95D",
-        )
-
-        self.processing_label.configure(
-            text="Retrying saved meeting..."
-        )
-
-        worker = threading.Thread(
-            target=self.process_meeting,
-            kwargs={
-                "retry_only": True
-            },
-            daemon=True,
-        )
-
-        worker.start()
-
-    # ========================================================
-    # THREAD SAFE STATUS
-    # ========================================================
-
-    def update_processing(
-        self,
-        message,
-    ):
-
-        self.after(
+        self._add_small_card(
+            actions_frame,
             0,
-            lambda: (
-                self.processing_label
-                .configure(
-                    text=message
-                )
-            ),
+            "My next steps",
+            my_tasks
         )
 
-    # ========================================================
-    # COMPLETE
-    # ========================================================
-
-    def display_notes(
-        self,
-        text_notes,
-    ):
-
-        self.last_processing_error = None
-
-        self.status_label.configure(
-            text="✓ COMPLETE",
-            text_color="#6DD58C",
+        self._add_small_card(
+            actions_frame,
+            1,
+            "Their next steps",
+            their_tasks
         )
 
-        self.processing_label.configure(
-            text=(
-                "Meeting processed successfully "
-                "and saved."
-            )
+        row += 1
+
+        decisions = [
+            item.decision
+            for item in notes.decisions
+        ]
+
+        self._add_list_section(
+            row,
+            "What was decided",
+            decisions
         )
 
-        self.notes_box.configure(
-            state="normal"
+        row += 1
+
+        self._add_list_section(
+            row,
+            "Important dates",
+            notes.deadlines
         )
 
-        self.notes_box.delete(
-            "1.0",
-            "end",
-        )
+        row += 1
 
-        self.notes_box.insert(
-            "1.0",
-            text_notes,
-        )
-
-        self.notes_box.configure(
-            state="disabled"
+        self._add_section(
+            row,
+            "Follow-up",
+            notes.follow_up or "Nothing scheduled yet."
         )
 
         self.enable_output_buttons()
@@ -915,36 +842,190 @@ class MeetingAssistantApp(ctk.CTk):
         )
 
     # ========================================================
-    # PROCESSING FAILED
+    # NOTE CARDS
     # ========================================================
 
-    def processing_failed(
+    def _add_section(
         self,
-        error,
+        row,
+        title,
+        content
     ):
-
-        print(
-            "Processing error:",
-            error,
+        card = ctk.CTkFrame(
+            self.notes_scroll,
+            corner_radius=12,
+            fg_color=self.CARD
         )
 
-        if (
-            self.audio_saved
-            and self.is_network_error(
-                error
-            )
-        ):
+        card.grid(
+            row=row,
+            column=0,
+            sticky="ew",
+            padx=5,
+            pady=6
+        )
 
+        card.grid_columnconfigure(
+            0,
+            weight=1
+        )
+
+        heading = ctk.CTkLabel(
+            card,
+            text=title,
+            font=ctk.CTkFont(
+                size=14,
+                weight="bold"
+            )
+        )
+
+        heading.grid(
+            row=0,
+            column=0,
+            sticky="w",
+            padx=18,
+            pady=(15, 5)
+        )
+
+        body = ctk.CTkLabel(
+            card,
+            text=content or "Nothing noted.",
+            font=ctk.CTkFont(size=13),
+            text_color="#D8D8D8",
+            justify="left",
+            anchor="w",
+            wraplength=900
+        )
+
+        body.grid(
+            row=1,
+            column=0,
+            sticky="ew",
+            padx=18,
+            pady=(0, 16)
+        )
+
+    def _add_list_section(
+        self,
+        row,
+        title,
+        items
+    ):
+        text = (
+            "\n".join(
+                f"• {item}"
+                for item in items
+            )
+            if items
+            else "Nothing noted."
+        )
+
+        self._add_section(
+            row,
+            title,
+            text
+        )
+
+    def _add_small_card(
+        self,
+        parent,
+        column,
+        title,
+        items
+    ):
+        card = ctk.CTkFrame(
+            parent,
+            corner_radius=12,
+            fg_color=self.CARD
+        )
+
+        card.grid(
+            row=0,
+            column=column,
+            sticky="nsew",
+            padx=5
+        )
+
+        heading = ctk.CTkLabel(
+            card,
+            text=title,
+            font=ctk.CTkFont(
+                size=14,
+                weight="bold"
+            )
+        )
+
+        heading.pack(
+            anchor="w",
+            padx=18,
+            pady=(15, 7)
+        )
+
+        content = (
+            "\n\n".join(
+                f"• {item}"
+                for item in items
+            )
+            if items
+            else "Nothing for now."
+        )
+
+        body = ctk.CTkLabel(
+            card,
+            text=content,
+            justify="left",
+            anchor="w",
+            font=ctk.CTkFont(size=13),
+            text_color="#D8D8D8",
+            wraplength=400
+        )
+
+        body.pack(
+            anchor="w",
+            padx=18,
+            pady=(0, 16)
+        )
+
+    def _format_task(self, item):
+        if item.deadline:
+            return (
+                f"{item.task}\n"
+                f"Due: {item.deadline}"
+            )
+
+        return item.task
+
+    # ========================================================
+    # FAILURE
+    # ========================================================
+
+    def processing_failed(self, error):
+        print(
+            "Processing error:",
+            error
+        )
+
+        if self.audio_saved:
             self.status_label.configure(
-                text="⚠ NETWORK ISSUE",
-                text_color="#F4C95D",
+                text="⚠ Couldn't finish",
+                text_color=self.WARNING
             )
 
             self.processing_label.configure(
                 text=(
-                    "Your recording is safe. "
-                    "Reconnect to the internet and "
-                    "click Retry Processing."
+                    "Your call is safe. "
+                    "You can try again when you're ready."
+                )
+            )
+
+            self.results_heading.configure(
+                text="Your recording is safe"
+            )
+
+            self.results_subtitle.configure(
+                text=(
+                    "We couldn't finish the notes this time. "
+                    "Nothing needs to be recorded again."
                 )
             )
 
@@ -952,199 +1033,129 @@ class MeetingAssistantApp(ctk.CTk):
                 state="normal"
             )
 
-            # Important:
-            # prevent starting another meeting because
-            # current root WAVs could be overwritten.
             self.start_button.configure(
-                state="disabled"
-            )
-
-            self.stop_button.configure(
                 state="disabled"
             )
 
             return
 
         self.status_label.configure(
-            text="✕ ERROR",
-            text_color="#FF6B6B",
+            text="✕ Something went wrong",
+            text_color=self.ERROR
         )
 
         self.processing_label.configure(
             text=str(error)
         )
 
-        if self.audio_saved:
+        self.start_button.configure(
+            state="normal"
+        )
 
-            self.retry_button.configure(
-                state="normal"
-            )
-
-        else:
-
-            self.start_button.configure(
-                state="normal"
-            )
-
-            self.meeting_name_entry.configure(
-                state="normal"
-            )
+        self.meeting_name_entry.configure(
+            state="normal"
+        )
 
     # ========================================================
-    # DOWNLOAD NOTES
+    # RETRY
     # ========================================================
 
-    def download_notes(self):
-
-        if not self.current_text_notes:
-
-            self.set_status(
-                "No meeting notes are available."
-            )
-
+    def retry_processing(self):
+        if not self.audio_saved:
             return
 
-        safe_name = (
-            self.current_meeting_name
-            or "meeting"
+        self.retry_button.configure(
+            state="disabled"
         )
 
-        safe_name = (
-            safe_name
-            .replace(" ", "_")
+        self.status_label.configure(
+            text="● Trying again",
+            text_color=self.WARNING
         )
 
-        file_path = (
-            filedialog
-            .asksaveasfilename(
-                title="Download Meeting Notes",
-                defaultextension=".txt",
-                filetypes=[
-                    (
-                        "Text Document",
-                        "*.txt",
-                    )
-                ],
-                initialfile=(
-                    f"{safe_name}_notes.txt"
-                ),
+        self.processing_label.configure(
+            text="Picking up from your saved recording…"
+        )
+
+        worker = threading.Thread(
+            target=self.process_meeting,
+            kwargs={"retry_only": True},
+            daemon=True
+        )
+
+        worker.start()
+
+    # ========================================================
+    # STATUS
+    # ========================================================
+
+    def update_processing(self, message):
+        self.after(
+            0,
+            lambda: self.processing_label.configure(
+                text=message
             )
         )
 
-        if not file_path:
-            return
-
-        Path(
-            file_path
-        ).write_text(
-            self.current_text_notes,
-            encoding="utf-8",
-        )
-
-        self.set_status(
-            "✓ Meeting notes downloaded."
+    def set_status(self, message):
+        self.processing_label.configure(
+            text=message
         )
 
     # ========================================================
-    # SEND TO WHATSAPP
-    # ========================================================
-
-    def send_to_whatsapp(self):
-
-        if not self.current_whatsapp_text:
-
-            self.set_status(
-                "No WhatsApp summary is available."
-            )
-
-            return
-
-        encoded_text = quote(
-            self.current_whatsapp_text
-        )
-
-        whatsapp_url = (
-            "https://wa.me/"
-            f"?text={encoded_text}"
-        )
-
-        webbrowser.open(
-            whatsapp_url
-        )
-
-        self.set_status(
-            (
-                "WhatsApp opened with your "
-                "meeting summary ready to send."
-            )
-        )
-
-    # ========================================================
-    # VIEW TRANSCRIPT
+    # TRANSCRIPT
     # ========================================================
 
     def show_transcript(self):
-
         try:
-
-            transcript = (
-                Path(
-                    "combined_transcript.txt"
-                )
-                .read_text(
-                    encoding="utf-8"
-                )
+            transcript = Path(
+                "combined_transcript.txt"
+            ).read_text(
+                encoding="utf-8"
             )
 
         except FileNotFoundError:
-
             self.set_status(
-                "Transcript file not found."
+                "Couldn't find the transcript."
             )
-
             return
 
-        window = ctk.CTkToplevel(
-            self
-        )
+        window = ctk.CTkToplevel(self)
 
-        window.title(
-            "Meeting Transcript"
-        )
+        window.title("Conversation transcript")
+        window.geometry("780x650")
 
-        window.geometry(
-            "780x650"
-        )
-
-        title = ctk.CTkLabel(
+        heading = ctk.CTkLabel(
             window,
-            text="Meeting Transcript",
+            text="Conversation transcript",
             font=ctk.CTkFont(
                 size=22,
-                weight="bold",
-            ),
+                weight="bold"
+            )
         )
 
-        title.pack(
-            pady=(20, 10)
+        heading.pack(
+            anchor="w",
+            padx=28,
+            pady=(24, 12)
         )
 
         textbox = ctk.CTkTextbox(
             window,
             wrap="word",
-            corner_radius=12,
+            corner_radius=12
         )
 
         textbox.pack(
             fill="both",
             expand=True,
-            padx=25,
-            pady=(0, 25),
+            padx=28,
+            pady=(0, 28)
         )
 
         textbox.insert(
             "1.0",
-            transcript,
+            transcript
         )
 
         textbox.configure(
@@ -1152,91 +1163,109 @@ class MeetingAssistantApp(ctk.CTk):
         )
 
     # ========================================================
-    # OPEN SAVED MEETING
+    # DOWNLOAD
+    # ========================================================
+
+    def download_notes(self):
+        if not self.current_text_notes:
+            return
+
+        name = (
+            self.current_meeting_name
+            or "conversation"
+        )
+
+        name = name.replace(
+            " ",
+            "_"
+        )
+
+        path = filedialog.asksaveasfilename(
+            title="Save notes",
+            defaultextension=".txt",
+            filetypes=[
+                ("Text document", "*.txt")
+            ],
+            initialfile=f"{name}_notes.txt"
+        )
+
+        if not path:
+            return
+
+        Path(path).write_text(
+            self.current_text_notes,
+            encoding="utf-8"
+        )
+
+        self.set_status(
+            "Notes saved."
+        )
+
+    # ========================================================
+    # WHATSAPP
+    # ========================================================
+
+    def send_to_whatsapp(self):
+        if not self.current_whatsapp_text:
+            return
+
+        message = quote(
+            self.current_whatsapp_text
+        )
+
+        webbrowser.open(
+            f"https://wa.me/?text={message}"
+        )
+
+        self.set_status(
+            "WhatsApp is ready with your notes."
+        )
+
+    # ========================================================
+    # OPEN FILES
     # ========================================================
 
     def open_meeting_folder(self):
-
         if not self.current_meeting_directory:
-
-            self.set_status(
-                "No saved meeting is available."
-            )
-
             return
 
         try:
-
             os.startfile(
                 self.current_meeting_directory
             )
 
         except Exception as error:
-
             self.set_status(
-                f"Could not open folder: {error}"
+                f"Couldn't open the folder: {error}"
             )
 
     # ========================================================
-    # OUTPUT BUTTON HELPERS
+    # BUTTON HELPERS
     # ========================================================
 
     def enable_output_buttons(self):
-
-        self.transcript_button.configure(
-            state="normal"
-        )
-
-        self.download_button.configure(
-            state="normal"
-        )
-
-        self.whatsapp_button.configure(
-            state="normal"
-        )
-
-        self.folder_button.configure(
-            state="normal"
-        )
+        for button in (
+            self.transcript_button,
+            self.download_button,
+            self.whatsapp_button,
+            self.folder_button,
+        ):
+            button.configure(
+                state="normal"
+            )
 
     def disable_output_buttons(self):
+        for button in (
+            self.transcript_button,
+            self.download_button,
+            self.whatsapp_button,
+            self.folder_button,
+        ):
+            button.configure(
+                state="disabled"
+            )
 
-        self.transcript_button.configure(
-            state="disabled"
-        )
-
-        self.download_button.configure(
-            state="disabled"
-        )
-
-        self.whatsapp_button.configure(
-            state="disabled"
-        )
-
-        self.folder_button.configure(
-            state="disabled"
-        )
-
-    # ========================================================
-    # STATUS
-    # ========================================================
-
-    def set_status(
-        self,
-        message,
-    ):
-
-        self.processing_label.configure(
-            text=message
-        )
-
-
-# ============================================================
-# RUN
-# ============================================================
 
 if __name__ == "__main__":
-
-    app = MeetingAssistantApp()
-
+    app = ConversationAssistantApp()
     app.mainloop()
