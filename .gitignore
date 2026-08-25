@@ -22,3 +22,7 @@ meeting_notes.json
 meeting_notes.txt
 
 *_notes.txt
+
+# V2 local call data
+backend/data/calls/*
+!backend/data/calls/.gitkeep
