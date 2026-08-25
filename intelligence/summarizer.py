@@ -227,8 +227,7 @@ Rules:
 
 - Do not invent anything.
 - Do not focus only on business or deadlines.
-- Capture meaningful personal feedback, opinions,
-  concerns and suggestions inside key_points.
+- Capture meaningful personal feedback, opinions,  concerns and suggestions inside key_points.
 - Keep casual small talk out unless it adds useful context.
 - Do not force action items, decisions, dates or follow-up.
 - Empty sections are completely acceptable.
