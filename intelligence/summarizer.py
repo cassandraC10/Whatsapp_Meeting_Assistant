@@ -11,100 +11,119 @@ from pydantic import BaseModel, Field
 
 load_dotenv()
 
-API_KEY = os.getenv("GEMINI_API_KEY")
+API_KEY = os.getenv(
+    "GEMINI_API_KEY"
+)
 
 if not API_KEY:
     raise RuntimeError(
         "GEMINI_API_KEY was not found. "
-        "Add GEMINI_API_KEY=your_key_here to your .env file."
+        "Add it to your .env file."
     )
 
-client = genai.Client(api_key=API_KEY)
-
-PROJECT_ROOT = Path(__file__).resolve().parent.parent
-
-TRANSCRIPT_FILE = PROJECT_ROOT / "combined_transcript.txt"
-JSON_OUTPUT_FILE = PROJECT_ROOT / "meeting_notes.json"
-TEXT_OUTPUT_FILE = PROJECT_ROOT / "meeting_notes.txt"
-
-MODEL_NAME = "gemini-3.5-flash"
+MODEL_NAME = os.getenv(
+    "GEMINI_MODEL",
+    "gemini-3.5-flash",
+)
 
 MAX_RETRIES = 4
 RETRY_DELAYS = [2, 4, 8]
 
+client = genai.Client(
+    api_key=API_KEY
+)
+
 
 class ActionItem(BaseModel):
     task: str = Field(
-        description="A task or next step clearly assigned to this speaker."
+        description=(
+            "A next step clearly belonging "
+            "to this person."
+        )
     )
 
     deadline: str | None = Field(
         default=None,
         description=(
-            "The deadline for this task if one was clearly stated. "
-            "Otherwise return null."
+            "Deadline if clearly mentioned. "
+            "Otherwise null."
         ),
     )
 
 
 class Decision(BaseModel):
     decision: str = Field(
-        description="A decision clearly reached during the conversation."
+        description=(
+            "A decision clearly reached "
+            "during the conversation."
+        )
     )
 
 
-class MeetingNotes(BaseModel):
+class ConversationNotes(BaseModel):
     title: str = Field(
-        description="A short, natural title for the conversation."
+        description=(
+            "A short natural title for "
+            "the conversation."
+        )
     )
 
     summary: str = Field(
         description=(
-            "A concise summary of the whole conversation, including the "
-            "most meaningful practical or personal context."
+            "A concise summary of the whole "
+            "conversation."
         )
     )
 
     key_points: list[str] = Field(
         description=(
-            "The most useful points from the conversation. Include meaningful "
-            "feedback, opinions, concerns, suggestions and context here."
+            "Important facts, feedback, opinions, "
+            "concerns, suggestions or context."
         )
     )
 
     decisions: list[Decision] = Field(
-        description="Decisions clearly reached during the conversation."
-    )
-
-    my_action_items: list[ActionItem] = Field(
-        description="Next steps belonging to ME / LOCAL SPEAKER."
-    )
-
-    client_action_items: list[ActionItem] = Field(
         description=(
-            "Next steps belonging to CLIENT / REMOTE SPEAKER. "
-            "The remote speaker may be a friend, client, colleague or anyone else."
+            "Decisions actually made."
         )
     )
 
-    deadlines: list[str] = Field(
+    my_action_items: list[ActionItem] = Field(
         description=(
-            "Important dates or time references that genuinely matter "
-            "to the conversation."
+            "Next steps belonging to "
+            "ME / LOCAL SPEAKER."
+        )
+    )
+
+    their_action_items: list[ActionItem] = Field(
+        description=(
+            "Next steps belonging to "
+            "THEM / REMOTE SPEAKER."
+        )
+    )
+
+    important_dates: list[str] = Field(
+        description=(
+            "Important dates or time references "
+            "actually mentioned."
         )
     )
 
     follow_up: str | None = Field(
         default=None,
         description=(
-            "A clearly agreed follow-up or next contact. "
-            "Return null if none was agreed."
+            "Agreed follow-up if one exists. "
+            "Otherwise null."
         ),
     )
 
 
-def is_daily_quota_error(error):
-    message = str(error).lower()
+def is_daily_quota_error(
+    error,
+) -> bool:
+    message = str(
+        error
+    ).lower()
 
     markers = [
         "requestsperday",
@@ -112,11 +131,18 @@ def is_daily_quota_error(error):
         "generate requests per day",
     ]
 
-    return any(marker in message for marker in markers)
+    return any(
+        marker in message
+        for marker in markers
+    )
 
 
-def is_temporary_gemini_error(error):
-    message = str(error).lower()
+def is_temporary_gemini_error(
+    error,
+) -> bool:
+    message = str(
+        error
+    ).lower()
 
     markers = [
         "503",
@@ -129,7 +155,10 @@ def is_temporary_gemini_error(error):
         "deadline exceeded",
     ]
 
-    return any(marker in message for marker in markers)
+    return any(
+        marker in message
+        for marker in markers
+    )
 
 
 def generate_notes_with_retry(
@@ -139,7 +168,10 @@ def generate_notes_with_retry(
 ):
     last_error = None
 
-    for attempt in range(1, MAX_RETRIES + 1):
+    for attempt in range(
+        1,
+        MAX_RETRIES + 1,
+    ):
         try:
             print(
                 f"Gemini notes attempt "
@@ -155,23 +187,30 @@ def generate_notes_with_retry(
         except Exception as error:
             last_error = error
 
-            if is_daily_quota_error(error):
+            if is_daily_quota_error(
+                error
+            ):
                 raise RuntimeError(
-                    "Daily Gemini free-tier limit reached. "
-                    "Your recording is safe. Try again after the quota resets."
+                    "Daily Gemini quota reached. "
+                    "Your transcript is safe. "
+                    "Try again after the quota resets."
                 ) from error
 
-            if not is_temporary_gemini_error(error):
+            if not is_temporary_gemini_error(
+                error
+            ):
                 raise
 
             if attempt >= MAX_RETRIES:
                 break
 
-            delay = RETRY_DELAYS[attempt - 1]
+            delay = RETRY_DELAYS[
+                attempt - 1
+            ]
 
             message = (
-                f"Service is busy. Trying again in "
-                f"{delay} seconds..."
+                f"Notes service is busy. "
+                f"Trying again in {delay} seconds..."
             )
 
             print(message)
@@ -182,65 +221,58 @@ def generate_notes_with_retry(
             time.sleep(delay)
 
     raise RuntimeError(
-        "The notes could not be completed after several attempts. "
+        "Notes could not be generated "
+        "after several attempts. "
         f"Last error: {last_error}"
     )
 
 
-def load_transcript():
-    if not TRANSCRIPT_FILE.exists():
-        raise FileNotFoundError(
-            f"Transcript not found: {TRANSCRIPT_FILE}"
-        )
-
-    transcript = TRANSCRIPT_FILE.read_text(
-        encoding="utf-8"
-    ).strip()
-
-    if not transcript:
-        raise RuntimeError(
-            "combined_transcript.txt is empty."
-        )
-
-    return transcript
-
-
-def generate_meeting_notes(
-    transcript,
+def generate_conversation_notes(
+    transcript: str,
     status_callback=None,
-):
-    prompt = f"""
-You are a conversation notes assistant.
+) -> ConversationNotes:
+    if not transcript.strip():
+        raise RuntimeError(
+            "A transcript is required "
+            "before notes can be generated."
+        )
 
-The transcript contains two identified participants:
+    prompt = f"""
+You are creating useful notes from a real conversation.
+
+The transcript contains two participants:
 
 ME / LOCAL SPEAKER
-= the person using this app.
+= the person using TCA.
 
-CLIENT / REMOTE SPEAKER
-= the other person on the call. They may be a friend,
-client, colleague, family member or anyone else.
+THEM / REMOTE SPEAKER
+= the other person on the call. They may be a client,
+friend, colleague, recruiter, collaborator, family member
+or anyone else.
 
-Create useful notes from the WHOLE conversation.
+Create concise notes from the WHOLE conversation.
 
 Rules:
 
 - Do not invent anything.
-- Do not focus only on business or deadlines.
-- Capture meaningful personal feedback, opinions,  concerns and suggestions inside key_points.
+- Do not focus only on business topics.
+- Capture meaningful feedback, opinions, concerns,
+  suggestions and context inside key_points.
 - Keep casual small talk out unless it adds useful context.
-- Do not force action items, decisions, dates or follow-up.
-- Empty sections are completely acceptable.
-- Keep action items assigned to the correct person.
+- Do not force action items.
+- Do not force decisions.
+- Do not force dates.
+- Do not force follow-up.
+- Empty lists are completely acceptable.
+- Keep action ownership correct.
 - Do not assume someone accepted a task unless the
-  conversation clearly supports it.
-- Preserve names, dates, feelings, preferences,
-  amounts and important details accurately.
-- Keep relative dates such as "tomorrow" or "Friday"
-  as spoken unless the transcript establishes the
-  exact calendar date.
+  transcript supports it.
+- Preserve names, dates, amounts, preferences and
+  meaningful personal details accurately.
+- Keep relative dates such as "tomorrow" as spoken unless
+  the transcript clearly establishes the calendar date.
 - Avoid duplicates.
-- Keep everything concise, natural and useful.
+- Keep the result natural and useful after the call.
 
 TRANSCRIPT:
 
@@ -248,8 +280,12 @@ TRANSCRIPT:
 """
 
     config = types.GenerateContentConfig(
-        response_mime_type="application/json",
-        response_schema=MeetingNotes,
+        response_mime_type=(
+            "application/json"
+        ),
+        response_schema=(
+            ConversationNotes
+        ),
     )
 
     response = generate_notes_with_retry(
@@ -260,30 +296,20 @@ TRANSCRIPT:
 
     if not response.text:
         raise RuntimeError(
-            "No notes were returned."
+            "No conversation notes were returned."
         )
 
-    return MeetingNotes.model_validate_json(
-        response.text
+    return (
+        ConversationNotes
+        .model_validate_json(
+            response.text
+        )
     )
 
 
-def save_json(notes):
-    JSON_OUTPUT_FILE.write_text(
-        json.dumps(
-            notes.model_dump(),
-            indent=4,
-            ensure_ascii=False,
-        ),
-        encoding="utf-8",
-    )
-
-    print(
-        f"Saved {JSON_OUTPUT_FILE.name}"
-    )
-
-
-def format_list(items):
+def format_list(
+    items: list[str],
+) -> str:
     if not items:
         return "None."
 
@@ -293,17 +319,21 @@ def format_list(items):
     )
 
 
-def format_decisions(items):
-    if not items:
+def format_decisions(
+    decisions: list[Decision],
+) -> str:
+    if not decisions:
         return "None."
 
     return "\n".join(
         f"- {item.decision}"
-        for item in items
+        for item in decisions
     )
 
 
-def format_action_items(items):
+def format_action_items(
+    items: list[ActionItem],
+) -> str:
     if not items:
         return "None."
 
@@ -313,18 +343,21 @@ def format_action_items(items):
         line = f"- {item.task}"
 
         if item.deadline:
-            line += f" (Due: {item.deadline})"
+            line += (
+                f" (Due: {item.deadline})"
+            )
 
         lines.append(line)
 
     return "\n".join(lines)
 
 
-def create_text_notes(notes):
+def create_text_notes(
+    notes: ConversationNotes,
+) -> str:
     return f"""
-CONVERSATION NOTES
+TCA — THE CALL ASSISTANT
 
-TITLE
 {notes.title}
 
 SUMMARY
@@ -337,72 +370,108 @@ MY NEXT STEPS
 {format_action_items(notes.my_action_items)}
 
 THEIR NEXT STEPS
-{format_action_items(notes.client_action_items)}
+{format_action_items(notes.their_action_items)}
 
 DECISIONS
 {format_decisions(notes.decisions)}
 
 IMPORTANT DATES
-{format_list(notes.deadlines)}
+{format_list(notes.important_dates)}
 
 FOLLOW-UP
 {notes.follow_up or "None."}
 """.strip()
 
 
-def save_text_notes(text):
-    TEXT_OUTPUT_FILE.write_text(
-        text,
+def summarize_call(
+    call_directory: str | Path,
+    status_callback=None,
+) -> tuple[
+    ConversationNotes,
+    str,
+]:
+    call_directory = Path(
+        call_directory
+    )
+
+    transcript_file = (
+        call_directory
+        / "combined_transcript.txt"
+    )
+
+    if not transcript_file.exists():
+        raise RuntimeError(
+            "No transcript exists for this call. "
+            "Notes cannot be generated."
+        )
+
+    transcript = (
+        transcript_file
+        .read_text(
+            encoding="utf-8"
+        )
+        .strip()
+    )
+
+    if not transcript:
+        raise RuntimeError(
+            "The transcript is empty. "
+            "Notes cannot be generated."
+        )
+
+    if status_callback:
+        status_callback(
+            "Organising your notes..."
+        )
+
+    notes = generate_conversation_notes(
+        transcript=transcript,
+        status_callback=status_callback,
+    )
+
+    notes_json_file = (
+        call_directory
+        / "notes.json"
+    )
+
+    notes_text_file = (
+        call_directory
+        / "notes.txt"
+    )
+
+    notes_json_file.write_text(
+        json.dumps(
+            notes.model_dump(),
+            indent=4,
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+
+    text_notes = (
+        create_text_notes(
+            notes
+        )
+    )
+
+    notes_text_file.write_text(
+        text_notes,
         encoding="utf-8",
     )
 
     print(
-        f"Saved {TEXT_OUTPUT_FILE.name}"
+        f"Saved notes to: "
+        f"{notes_json_file}"
     )
 
-
-def summarize_meeting(
-    status_callback=None,
-):
-    print("\nConversation Notes\n")
-
-    if status_callback:
-        status_callback(
-            "Reading your conversation..."
-        )
-
-    transcript = load_transcript()
-
-    if status_callback:
-        status_callback(
-            "Pulling out the important parts..."
-        )
-
-    notes = generate_meeting_notes(
-        transcript,
-        status_callback=status_callback,
+    return (
+        notes,
+        text_notes,
     )
-
-    if status_callback:
-        status_callback(
-            "Saving your notes..."
-        )
-
-    save_json(notes)
-
-    text_notes = create_text_notes(
-        notes
-    )
-
-    save_text_notes(
-        text_notes
-    )
-
-    print("\nSUCCESS\n")
-    print(text_notes)
-
-    return notes, text_notes
 
 
 if __name__ == "__main__":
-    summarize_meeting()
+    raise SystemExit(
+        "V2 notes are call-specific. "
+        "Run them through the TCA backend."
+    )

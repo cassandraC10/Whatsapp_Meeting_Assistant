@@ -9,25 +9,32 @@ import sounddevice as sd
 from scipy.io.wavfile import write
 from scipy.signal import resample_poly
 
-MIC_DEVICE_ID = 1
 
 TARGET_SAMPLE_RATE = 44100
 MIC_CHANNELS = 1
 BLOCK_SIZE = 1024
 
-NORMAL_STOP_TIMEOUT = 3
+NORMAL_STOP_TIMEOUT = 5
 FORCED_STOP_TIMEOUT = 3
 
 
 class MeetingRecorder:
     """
-    Records local microphone audio and Windows system audio.
+    Records the local microphone and Windows system audio separately.
 
-    The recorder keeps captured chunks in memory continuously so a
-    stubborn audio thread cannot destroy an otherwise completed call.
+    Output files:
+        mic_raw.wav
+        system_raw.wav
+        meeting.wav
+
+    Each recorder instance writes to its own output directory.
     """
 
-    def __init__(self, output_directory=None):
+    def __init__(
+        self,
+        output_directory: str | Path | None = None,
+        mic_device_id: int | None = 1,
+    ):
         self.output_directory = Path(
             output_directory or Path.cwd()
         )
@@ -36,6 +43,8 @@ class MeetingRecorder:
             parents=True,
             exist_ok=True,
         )
+
+        self.mic_device_id = mic_device_id
 
         self.mic_file = (
             self.output_directory / "mic_raw.wav"
@@ -50,129 +59,85 @@ class MeetingRecorder:
         )
 
         self.stop_event = threading.Event()
-        self.buffer_lock = threading.Lock()
 
-        self.mic_thread = None
-        self.system_thread = None
+        self.results: dict = {}
 
-        self.mic_stream = None
-        self.system_stream = None
-        self.system_pyaudio = None
-
-        self.mic_frames = []
-        self.system_frames = []
-
-        self.mic_error = None
-        self.system_error = None
-
-        self.system_sample_rate = None
-        self.system_channels = None
+        self.mic_thread: threading.Thread | None = None
+        self.system_thread: threading.Thread | None = None
 
         self.is_recording = False
-        self.started_at = None
+        self.started_at: float | None = None
 
-    # ---------------------------------------------------------
-    # Public API
-    # ---------------------------------------------------------
-
-    def start(self):
+    def start(self) -> None:
         if self.is_recording:
             raise RuntimeError(
                 "Recording is already running."
             )
 
-        self._reset_state()
+        self.results = {}
+        self.stop_event.clear()
 
-        self.is_recording = True
         self.started_at = time.time()
+        self.is_recording = True
 
         self.mic_thread = threading.Thread(
             target=self._record_microphone,
             daemon=True,
-            name="MicrophoneRecorder",
+            name="TCA-MicrophoneRecorder",
         )
 
         self.system_thread = threading.Thread(
             target=self._record_system_audio,
             daemon=True,
-            name="SystemAudioRecorder",
+            name="TCA-SystemAudioRecorder",
         )
 
-        print("Meeting recording started.")
+        print(
+            f"Starting recording in: "
+            f"{self.output_directory}"
+        )
 
-        self.mic_thread.start()
-        self.system_thread.start()
+        try:
+            self.mic_thread.start()
+            self.system_thread.start()
 
-    def stop(self):
-        """
-        Stop recording and save everything captured so far.
+        except Exception:
+            self.is_recording = False
+            self.stop_event.set()
+            raise
 
-        A slow/stuck audio shutdown is treated as recoverable.
-        Captured audio is salvaged before any fatal error is raised.
-        """
-
+    def stop(self) -> dict:
         if not self.is_recording:
             raise RuntimeError(
-                "No meeting is currently recording."
+                "No recording is currently running."
             )
 
         print("Stopping meeting recording...")
 
         self.stop_event.set()
 
-        mic_clean = self._stop_microphone_thread()
-        system_clean = self._stop_system_thread()
+        self._wait_for_threads()
 
         self.is_recording = False
 
-        if not mic_clean:
-            print(
-                "Warning: microphone thread required "
-                "forced shutdown."
-            )
+        self._check_errors()
 
-        if not system_clean:
-            print(
-                "Warning: system audio thread did not "
-                "stop normally. Salvaging captured audio."
-            )
+        mic_audio = self.results["mic"]
 
-        print("Recovering captured audio...")
+        system_audio = self.results["system"]
 
-        mic_audio = self._build_microphone_audio()
-        system_audio = self._build_system_audio()
-
-        # Save whatever is recoverable before failing.
-        if mic_audio is None and system_audio is None:
-            raise RuntimeError(
-                "No usable audio was captured."
-            )
-
-        if mic_audio is None:
-            raise RuntimeError(
-                "Microphone audio could not be recovered."
-            )
-
-        if system_audio is None:
-            # Preserve the microphone recording even if
-            # the remote track failed completely.
-            self._save_mic_only(
-                mic_audio
-            )
-
-            raise RuntimeError(
-                "Your microphone recording was saved, "
-                "but no usable system audio was captured."
-            )
-
-        system_audio = self._resample_audio(
-            system_audio,
-            self.system_sample_rate,
-            TARGET_SAMPLE_RATE,
-        )
+        system_rate = self.results[
+            "system_sample_rate"
+        ]
 
         mic_audio = mic_audio.astype(
             np.float32
+        )
+
+        system_audio = self._resample_audio(
+            system_audio,
+            system_rate,
+            TARGET_SAMPLE_RATE,
         )
 
         minimum_length = min(
@@ -182,7 +147,7 @@ class MeetingRecorder:
 
         if minimum_length <= 0:
             raise RuntimeError(
-                "Captured audio contains no usable samples."
+                "Recording contains no usable audio."
             )
 
         mic_audio = mic_audio[
@@ -192,8 +157,6 @@ class MeetingRecorder:
         system_audio = system_audio[
             :minimum_length
         ]
-
-        print("Saving recovered audio...")
 
         self._save_recordings(
             mic_audio,
@@ -206,32 +169,18 @@ class MeetingRecorder:
         )
 
         print(
-            f"Recording saved successfully. "
-            f"Duration: {duration:.1f} seconds."
+            f"Recording saved. "
+            f"Duration: {duration:.2f} seconds."
         )
 
-        if self.mic_error:
-            print(
-                "Microphone warning:",
-                self.mic_error,
-            )
-
-        if self.system_error:
-            print(
-                "System audio warning:",
-                self.system_error,
-            )
-
         return {
-            "mic": self.mic_file,
-            "system": self.system_file,
-            "mixed": self.mixed_file,
+            "mic": str(self.mic_file),
+            "system": str(self.system_file),
+            "mixed": str(self.mixed_file),
             "duration": duration,
-            "mic_shutdown_clean": mic_clean,
-            "system_shutdown_clean": system_clean,
         }
 
-    def elapsed_seconds(self):
+    def elapsed_seconds(self) -> int:
         if (
             not self.is_recording
             or self.started_at is None
@@ -242,32 +191,66 @@ class MeetingRecorder:
             time.time() - self.started_at
         )
 
-    # ---------------------------------------------------------
-    # Reset
-    # ---------------------------------------------------------
+    def _wait_for_threads(self) -> None:
+        if self.mic_thread is None:
+            raise RuntimeError(
+                "Microphone thread was not created."
+            )
 
-    def _reset_state(self):
-        self.stop_event.clear()
+        if self.system_thread is None:
+            raise RuntimeError(
+                "System audio thread was not created."
+            )
 
-        with self.buffer_lock:
-            self.mic_frames = []
-            self.system_frames = []
+        print(
+            "Waiting for microphone thread..."
+        )
 
-        self.mic_error = None
-        self.system_error = None
+        self.mic_thread.join(
+            timeout=NORMAL_STOP_TIMEOUT
+        )
 
-        self.system_sample_rate = None
-        self.system_channels = None
+        print(
+            "Microphone alive after stop:",
+            self.mic_thread.is_alive(),
+        )
 
-        self.mic_stream = None
-        self.system_stream = None
-        self.system_pyaudio = None
+        print(
+            "Waiting for system audio thread..."
+        )
 
-    # ---------------------------------------------------------
-    # Microphone
-    # ---------------------------------------------------------
+        self.system_thread.join(
+            timeout=NORMAL_STOP_TIMEOUT
+        )
 
-    def _record_microphone(self):
+        print(
+            "System audio alive after stop:",
+            self.system_thread.is_alive(),
+        )
+
+        if self.mic_thread.is_alive():
+            self.mic_thread.join(
+                timeout=FORCED_STOP_TIMEOUT
+            )
+
+        if self.system_thread.is_alive():
+            self.system_thread.join(
+                timeout=FORCED_STOP_TIMEOUT
+            )
+
+        if self.mic_thread.is_alive():
+            raise RuntimeError(
+                "Microphone recorder did not stop cleanly."
+            )
+
+        if self.system_thread.is_alive():
+            raise RuntimeError(
+                "System audio recorder did not stop cleanly."
+            )
+
+    def _record_microphone(self) -> None:
+        frames = []
+
         try:
             print(
                 "Microphone recording thread started."
@@ -277,12 +260,9 @@ class MeetingRecorder:
                 samplerate=TARGET_SAMPLE_RATE,
                 channels=MIC_CHANNELS,
                 dtype="int16",
-                device=MIC_DEVICE_ID,
+                device=self.mic_device_id,
                 blocksize=BLOCK_SIZE,
             ) as stream:
-
-                self.mic_stream = stream
-
                 while not self.stop_event.is_set():
                     data, overflowed = stream.read(
                         BLOCK_SIZE
@@ -294,50 +274,58 @@ class MeetingRecorder:
                             "buffer overflow."
                         )
 
-                    with self.buffer_lock:
-                        self.mic_frames.append(
-                            data.copy()
-                        )
+                    frames.append(
+                        data.copy()
+                    )
+
+            if not frames:
+                raise RuntimeError(
+                    "No microphone audio was captured."
+                )
+
+            audio = np.concatenate(
+                frames,
+                axis=0,
+            )
+
+            self.results["mic"] = (
+                audio.flatten()
+            )
+
+            self.results[
+                "mic_sample_rate"
+            ] = TARGET_SAMPLE_RATE
 
             print(
                 "Microphone recording thread stopped."
             )
 
         except Exception as error:
-            # Forced shutdown can cause read/stream errors.
-            # That is not fatal if stop was already requested.
-            if self.stop_event.is_set():
-                print(
-                    "Microphone stream closed during stop."
-                )
-            else:
-                self.mic_error = error
+            self.results[
+                "mic_error"
+            ] = error
 
-                print(
-                    "Microphone recording error:",
-                    error,
-                )
+            print(
+                "Microphone recording error:",
+                error,
+            )
 
-        finally:
-            self.mic_stream = None
-
-    # ---------------------------------------------------------
-    # System / WASAPI
-    # ---------------------------------------------------------
-
-    def _find_loopback_device(self, audio):
-        wasapi = (
-            audio.get_host_api_info_by_type(
+    def _find_loopback_device(
+        self,
+        p: pyaudio.PyAudio,
+    ) -> dict:
+        wasapi_info = (
+            p.get_host_api_info_by_type(
                 pyaudio.paWASAPI
             )
         )
 
-        output_index = wasapi[
+        output_index = wasapi_info[
             "defaultOutputDevice"
         ]
 
         output_device = (
-            audio.get_device_info_by_index(
+            p.get_device_info_by_index(
                 output_index
             )
         )
@@ -353,30 +341,30 @@ class MeetingRecorder:
         ):
             return output_device
 
-        for loopback in (
-            audio
-            .get_loopback_device_info_generator()
+        for loopback_device in (
+            p.get_loopback_device_info_generator()
         ):
             if (
                 output_device["name"]
-                in loopback["name"]
+                in loopback_device["name"]
             ):
                 print(
                     "Using WASAPI loopback:",
-                    loopback["name"],
+                    loopback_device["name"],
                 )
 
-                return loopback
+                return loopback_device
 
         raise RuntimeError(
-            "Could not find a WASAPI loopback "
-            "device for the current output."
+            "Could not find the WASAPI loopback "
+            "device for the default Windows output."
         )
 
-    def _record_system_audio(self):
-        audio = pyaudio.PyAudio()
+    def _record_system_audio(self) -> None:
+        p = pyaudio.PyAudio()
 
-        self.system_pyaudio = audio
+        stream = None
+        frames = []
 
         try:
             print(
@@ -384,39 +372,41 @@ class MeetingRecorder:
             )
 
             device = self._find_loopback_device(
-                audio
+                p
             )
 
-            self.system_sample_rate = int(
+            sample_rate = int(
                 device["defaultSampleRate"]
             )
 
-            self.system_channels = int(
+            channels = int(
                 device["maxInputChannels"]
             )
 
+            if channels <= 0:
+                raise RuntimeError(
+                    "Loopback device has no "
+                    "available input channels."
+                )
+
             print(
                 "System sample rate:",
-                self.system_sample_rate,
+                sample_rate,
             )
 
             print(
                 "System channels:",
-                self.system_channels,
+                channels,
             )
 
-            stream = audio.open(
+            stream = p.open(
                 format=pyaudio.paInt16,
-                channels=self.system_channels,
-                rate=self.system_sample_rate,
+                channels=channels,
+                rate=sample_rate,
                 input=True,
-                input_device_index=device[
-                    "index"
-                ],
+                input_device_index=device["index"],
                 frames_per_buffer=BLOCK_SIZE,
             )
-
-            self.system_stream = stream
 
             while not self.stop_event.is_set():
                 data = stream.read(
@@ -424,202 +414,17 @@ class MeetingRecorder:
                     exception_on_overflow=False,
                 )
 
-                # Store immediately.
-                # We no longer wait until the thread exits.
-                with self.buffer_lock:
-                    self.system_frames.append(
-                        bytes(data)
-                    )
+                frames.append(data)
 
-            print(
-                "System audio recording thread stopped."
-            )
-
-        except Exception as error:
-            # A forced close often makes stream.read()
-            # raise. If we're already stopping, that is
-            # expected and captured frames remain usable.
-            if self.stop_event.is_set():
-                print(
-                    "System audio stream closed "
-                    "during shutdown."
-                )
-            else:
-                self.system_error = error
-
-                print(
-                    "System recording error:",
-                    error,
+            if not frames:
+                raise RuntimeError(
+                    "No system audio was captured."
                 )
 
-        finally:
-            self._close_system_stream()
-
-            try:
-                audio.terminate()
-            except Exception:
-                pass
-
-            self.system_pyaudio = None
-
-    # ---------------------------------------------------------
-    # Thread shutdown
-    # ---------------------------------------------------------
-
-    def _stop_microphone_thread(self):
-        if self.mic_thread is None:
-            return True
-
-        print(
-            "Waiting for microphone thread..."
-        )
-
-        self.mic_thread.join(
-            timeout=NORMAL_STOP_TIMEOUT
-        )
-
-        if not self.mic_thread.is_alive():
-            print(
-                "Microphone alive after stop: False"
-            )
-            return True
-
-        print(
-            "Microphone still active. "
-            "Forcing stream shutdown..."
-        )
-
-        try:
-            if self.mic_stream is not None:
-                self.mic_stream.abort()
-        except Exception as error:
-            print(
-                "Microphone force-stop warning:",
-                error,
-            )
-
-        self.mic_thread.join(
-            timeout=FORCED_STOP_TIMEOUT
-        )
-
-        alive = self.mic_thread.is_alive()
-
-        print(
-            "Microphone alive after forced stop:",
-            alive,
-        )
-
-        # Do not throw here.
-        # stop() will salvage the buffered frames.
-        return not alive
-
-    def _stop_system_thread(self):
-        if self.system_thread is None:
-            return True
-
-        print(
-            "Waiting for system audio thread..."
-        )
-
-        self.system_thread.join(
-            timeout=NORMAL_STOP_TIMEOUT
-        )
-
-        if not self.system_thread.is_alive():
-            print(
-                "System audio alive after stop: False"
-            )
-            return True
-
-        print(
-            "System audio is still active. "
-            "Forcing WASAPI stream shutdown..."
-        )
-
-        self._close_system_stream()
-
-        self.system_thread.join(
-            timeout=FORCED_STOP_TIMEOUT
-        )
-
-        alive = self.system_thread.is_alive()
-
-        print(
-            "System audio alive after forced stop:",
-            alive,
-        )
-
-        # Critical change:
-        # a stubborn thread is now a warning,
-        # not an automatic loss of the meeting.
-        return not alive
-
-    def _close_system_stream(self):
-        stream = self.system_stream
-
-        if stream is None:
-            return
-
-        # Remove shared reference first so we don't
-        # repeatedly try to close the same stream.
-        self.system_stream = None
-
-        try:
-            if stream.is_active():
-                stream.stop_stream()
-        except Exception:
-            pass
-
-        try:
-            stream.close()
-        except Exception:
-            pass
-
-    # ---------------------------------------------------------
-    # Recover buffered audio
-    # ---------------------------------------------------------
-
-    def _build_microphone_audio(self):
-        with self.buffer_lock:
-            frames = list(
-                self.mic_frames
-            )
-
-        if not frames:
-            return None
-
-        try:
-            audio = np.concatenate(
-                frames,
-                axis=0,
-            )
-
-            return audio.flatten()
-
-        except Exception as error:
-            self.mic_error = error
-            return None
-
-    def _build_system_audio(self):
-        with self.buffer_lock:
-            frames = list(
-                self.system_frames
-            )
-
-        if (
-            not frames
-            or not self.system_sample_rate
-            or not self.system_channels
-        ):
-            return None
-
-        try:
             raw_audio = np.frombuffer(
                 b"".join(frames),
                 dtype=np.int16,
             )
-
-            channels = self.system_channels
 
             if channels > 1:
                 usable_length = (
@@ -643,62 +448,104 @@ class MeetingRecorder:
                     .astype(np.int16)
                 )
 
-            return raw_audio
+            self.results[
+                "system"
+            ] = raw_audio
+
+            self.results[
+                "system_sample_rate"
+            ] = sample_rate
+
+            print(
+                "System audio recording thread stopped."
+            )
 
         except Exception as error:
-            self.system_error = error
-            return None
+            self.results[
+                "system_error"
+            ] = error
 
-    # ---------------------------------------------------------
-    # Audio processing
-    # ---------------------------------------------------------
+            print(
+                "System audio recording error:",
+                error,
+            )
 
+        finally:
+            if stream is not None:
+                try:
+                    stream.stop_stream()
+                except Exception:
+                    pass
+
+                try:
+                    stream.close()
+                except Exception:
+                    pass
+
+            p.terminate()
+
+    def _check_errors(self) -> None:
+        if "mic_error" in self.results:
+            raise RuntimeError(
+                "Microphone recording failed: "
+                f"{self.results['mic_error']}"
+            )
+
+        if "system_error" in self.results:
+            raise RuntimeError(
+                "System audio recording failed: "
+                f"{self.results['system_error']}"
+            )
+
+        if "mic" not in self.results:
+            raise RuntimeError(
+                "Microphone produced no audio."
+            )
+
+        if "system" not in self.results:
+            raise RuntimeError(
+                "System audio produced no audio."
+            )
+
+    @staticmethod
     def _resample_audio(
-        self,
-        audio,
-        original_rate,
-        target_rate,
-    ):
-        original_rate = int(
-            original_rate
-        )
-
-        target_rate = int(
-            target_rate
-        )
+        audio: np.ndarray,
+        original_rate: int,
+        target_rate: int,
+    ) -> np.ndarray:
+        original_rate = int(original_rate)
+        target_rate = int(target_rate)
 
         if original_rate == target_rate:
             return audio.astype(
                 np.float32
             )
 
-        divisor = gcd(
+        common_divisor = gcd(
             original_rate,
             target_rate,
         )
 
         up = (
             target_rate
-            // divisor
+            // common_divisor
         )
 
         down = (
             original_rate
-            // divisor
+            // common_divisor
         )
 
         return resample_poly(
             audio.astype(np.float32),
             up,
             down,
-        ).astype(
-            np.float32
-        )
+        ).astype(np.float32)
 
+    @staticmethod
     def _normalize_audio(
-        self,
-        audio,
-    ):
+        audio: np.ndarray,
+    ) -> np.ndarray:
         audio = audio.astype(
             np.float32
         )
@@ -717,9 +564,9 @@ class MeetingRecorder:
 
     def _mix_audio(
         self,
-        mic_audio,
-        system_audio,
-    ):
+        mic_audio: np.ndarray,
+        system_audio: np.ndarray,
+    ) -> np.ndarray:
         length = min(
             len(mic_audio),
             len(system_audio),
@@ -733,10 +580,12 @@ class MeetingRecorder:
             system_audio[:length]
         )
 
+        mic_gain = 0.50
+        system_gain = 0.40
+
         mixed = (
-            mic * 0.50
-            +
-            system * 0.40
+            mic * mic_gain
+            + system * system_gain
         )
 
         peak = np.max(
@@ -753,14 +602,12 @@ class MeetingRecorder:
         return (
             mixed
             * 32767
-        ).astype(
-            np.int16
-        )
+        ).astype(np.int16)
 
+    @staticmethod
     def _prepare_wav(
-        self,
-        audio,
-    ):
+        audio: np.ndarray,
+    ) -> np.ndarray:
         audio = audio.astype(
             np.float32
         )
@@ -782,42 +629,21 @@ class MeetingRecorder:
                 * 32767
             )
 
-        return np.clip(
+        audio = np.clip(
             audio,
             -32768,
             32767,
-        ).astype(
+        )
+
+        return audio.astype(
             np.int16
-        )
-
-    # ---------------------------------------------------------
-    # Saving
-    # ---------------------------------------------------------
-
-    def _save_mic_only(
-        self,
-        mic_audio,
-    ):
-        mic_wav = self._prepare_wav(
-            mic_audio
-        )
-
-        write(
-            self.mic_file,
-            TARGET_SAMPLE_RATE,
-            mic_wav,
-        )
-
-        print(
-            "Saved recoverable microphone audio:",
-            self.mic_file.name,
         )
 
     def _save_recordings(
         self,
-        mic_audio,
-        system_audio,
-    ):
+        mic_audio: np.ndarray,
+        system_audio: np.ndarray,
+    ) -> None:
         mic_wav = self._prepare_wav(
             mic_audio
         )
@@ -837,10 +663,20 @@ class MeetingRecorder:
             mic_wav,
         )
 
+        print(
+            "Saved:",
+            self.mic_file,
+        )
+
         write(
             self.system_file,
             TARGET_SAMPLE_RATE,
             system_wav,
+        )
+
+        print(
+            "Saved:",
+            self.system_file,
         )
 
         write(
@@ -851,15 +687,5 @@ class MeetingRecorder:
 
         print(
             "Saved:",
-            self.mic_file.name,
-        )
-
-        print(
-            "Saved:",
-            self.system_file.name,
-        )
-
-        print(
-            "Saved:",
-            self.mixed_file.name,
+            self.mixed_file,
         )
