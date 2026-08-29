@@ -2007,12 +2007,30 @@ function CallDetail({
               call={call}
               onContinue={
                 call.status === "created"
+                || (
+                  call.status === "failed"
+                  && (
+                    call.failure_reason
+                    === "recording_interrupted"
+                    || call.failure_reason
+                    === "recording_start_failed"
+                    || call.failure_reason
+                    === "recording_finish_failed"
+                  )
+                )
                   ? onContinueCreatedCall
                   : undefined
               }
               onProcess={
                 call.status === "processing"
-                || call.status === "failed"
+                || (
+                  call.status === "failed"
+                  && (
+                    !call.failure_reason
+                    || call.failure_reason
+                    === "processing_failed"
+                  )
+                )
                   ? onProcessCall
                   : undefined
               }
@@ -2181,6 +2199,122 @@ function IncompleteCall({
   onContinue?: () => void;
   onProcess?: () => void;
 }) {
+  if (
+    call.status === "failed"
+    && call.failure_reason
+    === "recording_interrupted"
+  ) {
+    return (
+      <div className="notice notice-error">
+        <strong>
+          Recording interrupted.
+        </strong>
+
+        <p>
+          This recording session ended unexpectedly
+          before it could be saved. You can start
+          this call again.
+        </p>
+
+        {onContinue && (
+          <button
+            type="button"
+            className="notice-action"
+            onClick={onContinue}
+          >
+            Start again
+          </button>
+        )}
+      </div>
+    );
+  }
+
+  if (
+    call.status === "failed"
+    && call.failure_reason
+    === "recording_start_failed"
+  ) {
+    return (
+      <div className="notice notice-error">
+        <strong>
+          Recording couldn't start.
+        </strong>
+
+        <p>
+          Check your audio devices and try again.
+        </p>
+
+        {onContinue && (
+          <button
+            type="button"
+            className="notice-action"
+            onClick={onContinue}
+          >
+            Try recording again
+          </button>
+        )}
+      </div>
+    );
+  }
+
+  if (
+    call.status === "failed"
+    && call.failure_reason
+    === "recording_finish_failed"
+  ) {
+    return (
+      <div className="notice notice-error">
+        <strong>
+          Recording didn't finish correctly.
+        </strong>
+
+        <p>
+          The recording session could not be
+          finalised. You can start the call again.
+        </p>
+
+        {onContinue && (
+          <button
+            type="button"
+            className="notice-action"
+            onClick={onContinue}
+          >
+            Start again
+          </button>
+        )}
+      </div>
+    );
+  }
+
+  if (
+    call.status === "failed"
+    && call.failure_reason
+    === "processing_failed"
+  ) {
+    return (
+      <div className="notice notice-error">
+        <strong>
+          Your recording is safe.
+        </strong>
+
+        <p>
+          We couldn't prepare the notes. You can
+          try processing the saved recording again.
+        </p>
+
+        {onProcess && (
+          <button
+            type="button"
+            className="notice-action"
+            onClick={onProcess}
+          >
+            Try processing again
+          </button>
+        )}
+      </div>
+    );
+  }
+
   const copy: Record<
     Call["status"],
     {
@@ -2192,33 +2326,28 @@ function IncompleteCall({
       title:
         "This call hasn't started yet.",
       message:
-        "You can start recording "
-        + "whenever you're ready.",
+        "You can start recording whenever you're ready.",
     },
 
     recording: {
       title:
         "This call is recording.",
       message:
-        "Return to the active "
-        + "recording session to "
-        + "finish it.",
+        "Return to the active recording session to finish it.",
     },
 
     paused: {
       title:
         "This call is paused.",
       message:
-        "Resume the recording "
-        + "when you're ready.",
+        "Resume the recording when you're ready.",
     },
 
     processing: {
       title:
         "Your recording is ready.",
       message:
-        "Process it to create the "
-        + "transcript and call notes.",
+        "Process it to create the transcript and call notes.",
     },
 
     completed: {
@@ -2229,12 +2358,9 @@ function IncompleteCall({
 
     failed: {
       title:
-        "Processing didn't finish.",
+        "This call didn't finish.",
       message:
-        "The recording is still "
-        + "saved, so you can try "
-        + "again without recording "
-        + "another call.",
+        "You can try again.",
     },
   };
 
@@ -2267,9 +2393,7 @@ function IncompleteCall({
           className="notice-action"
           onClick={onProcess}
         >
-          {call.status === "failed"
-            ? "Try processing again"
-            : "Prepare notes"}
+          Prepare notes
         </button>
       )}
     </div>

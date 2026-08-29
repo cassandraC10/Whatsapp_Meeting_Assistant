@@ -48,11 +48,51 @@ call_repository = CallRepository()
 
 recorder_manager = RecorderManager()
 
-processing_service = (
-    CallProcessingService(
-        repository=call_repository
-    )
+processing_service = CallProcessingService(
+    repository=call_repository
 )
+
+
+def recover_stale_call(
+    call: Call,
+) -> Call:
+    """
+    A recording only exists while its MeetingRecorder
+    is alive in this Python process.
+
+    If metadata says recording/paused but there is no
+    live recorder, the previous session was interrupted.
+    """
+
+    if call.status not in {
+        CallStatus.RECORDING,
+        CallStatus.PAUSED,
+    }:
+        return call
+
+    if recorder_manager.is_recording(
+        call.id
+    ):
+        return call
+
+    call.status = CallStatus.FAILED
+    call.failure_reason = (
+        "recording_interrupted"
+    )
+
+    call_repository.save(call)
+
+    return call
+
+
+def recover_stale_calls() -> None:
+    for call in call_repository.list_all():
+        recover_stale_call(call)
+
+
+# Clean up zombie recording states whenever
+# this backend process starts.
+recover_stale_calls()
 
 
 @app.get("/health")
@@ -82,7 +122,12 @@ def create_call(
     response_model=list[Call],
 )
 def list_calls():
-    return call_repository.list_all()
+    calls = call_repository.list_all()
+
+    return [
+        recover_stale_call(call)
+        for call in calls
+    ]
 
 
 @app.get(
@@ -92,9 +137,7 @@ def list_calls():
 def get_call(
     call_id: str,
 ):
-    return require_call(
-        call_id
-    )
+    return require_call(call_id)
 
 
 @app.post(
@@ -104,9 +147,7 @@ def get_call(
 def start_call_recording(
     call_id: str,
 ):
-    call = require_call(
-        call_id
-    )
+    call = require_call(call_id)
 
     if call.status in {
         CallStatus.RECORDING,
@@ -120,10 +161,7 @@ def start_call_recording(
             ),
         )
 
-    if (
-        call.status
-        == CallStatus.PROCESSING
-    ):
+    if call.status == CallStatus.PROCESSING:
         raise HTTPException(
             status_code=409,
             detail=(
@@ -131,15 +169,44 @@ def start_call_recording(
             ),
         )
 
-    if (
-        call.status
-        == CallStatus.COMPLETED
-    ):
+    if call.status == CallStatus.COMPLETED:
         raise HTTPException(
             status_code=409,
             detail=(
                 "This call is already completed. "
                 "Create a new call instead."
+            ),
+        )
+
+    call_directory = (
+        call_repository.get_directory(
+            call_id
+        )
+    )
+
+    mic_file = (
+        call_directory
+        / "mic_raw.wav"
+    )
+
+    system_file = (
+        call_directory
+        / "system_raw.wav"
+    )
+
+    # A failed processing job may still have a
+    # perfectly good recording. Do not overwrite it.
+    if (
+        call.status == CallStatus.FAILED
+        and mic_file.exists()
+        and system_file.exists()
+    ):
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "This call already has a saved "
+                "recording. Try processing it again "
+                "instead of recording over it."
             ),
         )
 
@@ -154,12 +221,6 @@ def start_call_recording(
             ),
         )
 
-    call_directory = (
-        call_repository.get_directory(
-            call_id
-        )
-    )
-
     try:
         recorder_manager.start(
             call_id=call_id,
@@ -167,13 +228,12 @@ def start_call_recording(
         )
 
     except Exception as error:
-        call.status = (
-            CallStatus.FAILED
+        call.status = CallStatus.FAILED
+        call.failure_reason = (
+            "recording_start_failed"
         )
 
-        call_repository.save(
-            call
-        )
+        call_repository.save(call)
 
         raise HTTPException(
             status_code=500,
@@ -183,13 +243,10 @@ def start_call_recording(
             ),
         ) from error
 
-    call.status = (
-        CallStatus.RECORDING
-    )
+    call.status = CallStatus.RECORDING
+    call.failure_reason = None
 
-    call_repository.save(
-        call
-    )
+    call_repository.save(call)
 
     return call
 
@@ -201,14 +258,9 @@ def start_call_recording(
 def pause_call_recording(
     call_id: str,
 ):
-    call = require_call(
-        call_id
-    )
+    call = require_call(call_id)
 
-    if (
-        call.status
-        != CallStatus.RECORDING
-    ):
+    if call.status != CallStatus.RECORDING:
         raise HTTPException(
             status_code=409,
             detail=(
@@ -220,11 +272,18 @@ def pause_call_recording(
     if not recorder_manager.is_recording(
         call_id
     ):
+        call.status = CallStatus.FAILED
+        call.failure_reason = (
+            "recording_interrupted"
+        )
+
+        call_repository.save(call)
+
         raise HTTPException(
             status_code=409,
             detail=(
-                "No active recorder was found "
-                "for this call."
+                "This recording session "
+                "was interrupted."
             ),
         )
 
@@ -242,13 +301,9 @@ def pause_call_recording(
             ),
         ) from error
 
-    call.status = (
-        CallStatus.PAUSED
-    )
+    call.status = CallStatus.PAUSED
 
-    call_repository.save(
-        call
-    )
+    call_repository.save(call)
 
     return call
 
@@ -260,14 +315,9 @@ def pause_call_recording(
 def resume_call_recording(
     call_id: str,
 ):
-    call = require_call(
-        call_id
-    )
+    call = require_call(call_id)
 
-    if (
-        call.status
-        != CallStatus.PAUSED
-    ):
+    if call.status != CallStatus.PAUSED:
         raise HTTPException(
             status_code=409,
             detail=(
@@ -279,11 +329,18 @@ def resume_call_recording(
     if not recorder_manager.is_recording(
         call_id
     ):
+        call.status = CallStatus.FAILED
+        call.failure_reason = (
+            "recording_interrupted"
+        )
+
+        call_repository.save(call)
+
         raise HTTPException(
             status_code=409,
             detail=(
-                "No active recorder was found "
-                "for this call."
+                "This recording session "
+                "was interrupted."
             ),
         )
 
@@ -301,13 +358,9 @@ def resume_call_recording(
             ),
         ) from error
 
-    call.status = (
-        CallStatus.RECORDING
-    )
+    call.status = CallStatus.RECORDING
 
-    call_repository.save(
-        call
-    )
+    call_repository.save(call)
 
     return call
 
@@ -318,9 +371,7 @@ def resume_call_recording(
 def finish_call_recording(
     call_id: str,
 ):
-    call = require_call(
-        call_id
-    )
+    call = require_call(call_id)
 
     if call.status not in {
         CallStatus.RECORDING,
@@ -337,19 +388,19 @@ def finish_call_recording(
     if not recorder_manager.is_recording(
         call_id
     ):
-        call.status = (
-            CallStatus.FAILED
+        call.status = CallStatus.FAILED
+        call.failure_reason = (
+            "recording_interrupted"
         )
 
-        call_repository.save(
-            call
-        )
+        call_repository.save(call)
 
         raise HTTPException(
             status_code=409,
             detail=(
-                "The call is marked as active, "
-                "but no recorder was found."
+                "The recording session ended "
+                "unexpectedly before it could "
+                "be finished."
             ),
         )
 
@@ -361,13 +412,12 @@ def finish_call_recording(
         )
 
     except Exception as error:
-        call.status = (
-            CallStatus.FAILED
+        call.status = CallStatus.FAILED
+        call.failure_reason = (
+            "recording_finish_failed"
         )
 
-        call_repository.save(
-            call
-        )
+        call_repository.save(call)
 
         raise HTTPException(
             status_code=500,
@@ -387,9 +437,9 @@ def finish_call_recording(
         CallStatus.PROCESSING
     )
 
-    call_repository.save(
-        call
-    )
+    call.failure_reason = None
+
+    call_repository.save(call)
 
     return {
         "call": call,
@@ -424,9 +474,7 @@ def finish_call_recording(
 def get_recording_status(
     call_id: str,
 ):
-    call = require_call(
-        call_id
-    )
+    call = require_call(call_id)
 
     return {
         "call_id": call.id,
@@ -446,6 +494,9 @@ def get_recording_status(
                 call_id
             )
         ),
+        "failure_reason": (
+            call.failure_reason
+        ),
     }
 
 
@@ -455,9 +506,7 @@ def get_recording_status(
 def process_call(
     call_id: str,
 ):
-    call = require_call(
-        call_id
-    )
+    call = require_call(call_id)
 
     call_directory = (
         call_repository.get_directory(
@@ -499,14 +548,36 @@ def process_call(
             ),
         )
 
+    call.status = CallStatus.PROCESSING
+    call.failure_reason = None
+
+    call_repository.save(call)
+
     try:
-        return (
-            processing_service.process(
-                call
-            )
+        return processing_service.process(
+            call
         )
 
     except Exception as error:
+        latest_call = (
+            call_repository.get(
+                call_id
+            )
+            or call
+        )
+
+        latest_call.status = (
+            CallStatus.FAILED
+        )
+
+        latest_call.failure_reason = (
+            "processing_failed"
+        )
+
+        call_repository.save(
+            latest_call
+        )
+
         raise HTTPException(
             status_code=500,
             detail=str(error),
@@ -519,9 +590,7 @@ def process_call(
 def get_call_transcript(
     call_id: str,
 ):
-    require_call(
-        call_id
-    )
+    require_call(call_id)
 
     call_directory = (
         call_repository.get_directory(
@@ -558,9 +627,7 @@ def get_call_transcript(
 def get_call_notes(
     call_id: str,
 ):
-    call = require_call(
-        call_id
-    )
+    call = require_call(call_id)
 
     call_directory = (
         call_repository.get_directory(
@@ -606,4 +673,6 @@ def require_call(
             detail="Call not found.",
         )
 
-    return call
+    return recover_stale_call(
+        call
+    )

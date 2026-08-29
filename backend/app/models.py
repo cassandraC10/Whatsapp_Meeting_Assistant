@@ -26,3 +26,4 @@ class Call(BaseModel):
     created_at: datetime
     duration_seconds: float = 0
     status: CallStatus = CallStatus.CREATED
+    failure_reason: str | None = None

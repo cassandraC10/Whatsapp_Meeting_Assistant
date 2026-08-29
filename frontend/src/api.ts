@@ -15,6 +15,7 @@ export interface Call {
   created_at: string;
   duration_seconds: number;
   status: CallStatus;
+  failure_reason: string | null;
 }
 
 export interface ActionItem {
@@ -53,6 +54,7 @@ export interface RecordingStatusResponse {
   is_recording: boolean;
   is_paused: boolean;
   elapsed_seconds: number;
+  failure_reason: string | null;
 }
 
 export interface FinishRecordingResponse {
