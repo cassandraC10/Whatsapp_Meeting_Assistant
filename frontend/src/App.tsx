@@ -9,6 +9,7 @@ import type {
 
 import {
   createCall,
+  deleteCall,
   finishCallRecording,
   getCall,
   getCallNotes,
@@ -286,16 +287,17 @@ function buildDownloadNotes(
 function safeFilename(
   value: string
 ) {
-  const clean = value
-    .trim()
-    .replace(
-      /[<>:"/\\|?*]/g,
-      ""
-    )
-    .replace(
-      /\s+/g,
-      "_"
-    );
+  const clean =
+    value
+      .trim()
+      .replace(
+        /[<>:"/\\|?*]/g,
+        ""
+      )
+      .replace(
+        /\s+/g,
+        "_"
+      );
 
   return (
     clean || "call_notes"
@@ -429,6 +431,11 @@ function App() {
     setActionMessage,
   ] = useState("");
 
+  const [
+    deletingCall,
+    setDeletingCall,
+  ] = useState(false);
+
 
   useEffect(() => {
     document
@@ -484,6 +491,8 @@ function App() {
             if (
               current.status
               === result.status
+              && current.failure_reason
+              === result.failure_reason
             ) {
               return current;
             }
@@ -491,6 +500,8 @@ function App() {
             return {
               ...current,
               status: result.status,
+              failure_reason:
+                result.failure_reason,
             };
           }
         );
@@ -641,7 +652,9 @@ function App() {
         ]
       );
 
-      setSelectedCall(call);
+      setSelectedCall(
+        call
+      );
 
       setTitle("");
 
@@ -650,9 +663,12 @@ function App() {
       );
 
       setRecordingError("");
+
       setElapsedSeconds(0);
 
-      setView("consent");
+      setView(
+        "consent"
+      );
 
     } catch (error) {
       setMessage(
@@ -704,9 +720,13 @@ function App() {
         updatedCall
       );
 
-      setTranscriptOpen(false);
+      setTranscriptOpen(
+        false
+      );
 
-      setView("detail");
+      setView(
+        "detail"
+      );
 
     } catch (error) {
       setDetailError(
@@ -718,7 +738,9 @@ function App() {
           )
       );
 
-      setView("detail");
+      setView(
+        "detail"
+      );
 
     } finally {
       setLoadingDetail(false);
@@ -729,17 +751,29 @@ function App() {
   async function openCall(
     call: Call
   ) {
-    setSelectedCall(call);
+    setSelectedCall(
+      call
+    );
 
-    setSelectedNotes(null);
-    setSelectedTranscript(null);
+    setSelectedNotes(
+      null
+    );
 
-    setTranscriptOpen(false);
+    setSelectedTranscript(
+      null
+    );
+
+    setTranscriptOpen(
+      false
+    );
+
     setDetailError("");
+
     setActionMessage("");
 
     if (
-      call.status === "completed"
+      call.status
+      === "completed"
     ) {
       await loadCompletedCall(
         call.id
@@ -748,28 +782,47 @@ function App() {
       return;
     }
 
-    setView("detail");
+    setView(
+      "detail"
+    );
   }
 
 
   function returnToCalls() {
-    setView("calls");
+    setView(
+      "calls"
+    );
 
-    setSelectedCall(null);
+    setSelectedCall(
+      null
+    );
 
-    setSelectedNotes(null);
-    setSelectedTranscript(null);
+    setSelectedNotes(
+      null
+    );
 
-    setTranscriptOpen(false);
+    setSelectedTranscript(
+      null
+    );
+
+    setTranscriptOpen(
+      false
+    );
 
     setDetailError("");
+
     setRecordingError("");
+
     setProcessingError("");
+
     setActionMessage("");
 
-    setConsentConfirmed(false);
+    setConsentConfirmed(
+      false
+    );
 
     setElapsedSeconds(0);
+
     setProcessingSeconds(0);
 
     loadCalls();
@@ -779,14 +832,21 @@ function App() {
   function continueCreatedCall(
     call: Call
   ) {
-    setSelectedCall(call);
+    setSelectedCall(
+      call
+    );
 
-    setConsentConfirmed(false);
+    setConsentConfirmed(
+      false
+    );
 
     setRecordingError("");
+
     setElapsedSeconds(0);
 
-    setView("consent");
+    setView(
+      "consent"
+    );
   }
 
 
@@ -800,6 +860,7 @@ function App() {
     }
 
     setStartingRecording(true);
+
     setRecordingError("");
 
     try {
@@ -818,7 +879,9 @@ function App() {
 
       setElapsedSeconds(0);
 
-      setView("recording");
+      setView(
+        "recording"
+      );
 
     } catch (error) {
       setRecordingError(
@@ -831,7 +894,9 @@ function App() {
       );
 
     } finally {
-      setStartingRecording(false);
+      setStartingRecording(
+        false
+      );
     }
   }
 
@@ -845,7 +910,10 @@ function App() {
       return;
     }
 
-    setChangingPauseState(true);
+    setChangingPauseState(
+      true
+    );
+
     setRecordingError("");
 
     try {
@@ -878,7 +946,9 @@ function App() {
       );
 
     } finally {
-      setChangingPauseState(false);
+      setChangingPauseState(
+        false
+      );
     }
   }
 
@@ -891,7 +961,10 @@ function App() {
       return;
     }
 
-    setFinishingRecording(true);
+    setFinishingRecording(
+      true
+    );
+
     setRecordingError("");
 
     try {
@@ -914,13 +987,21 @@ function App() {
           .duration_seconds
       );
 
-      setSelectedNotes(null);
-      setSelectedTranscript(null);
+      setSelectedNotes(
+        null
+      );
+
+      setSelectedTranscript(
+        null
+      );
 
       setProcessingError("");
+
       setProcessingSeconds(0);
 
-      setView("processing");
+      setView(
+        "processing"
+      );
 
       await runProcessing(
         result.call
@@ -937,7 +1018,9 @@ function App() {
       );
 
     } finally {
-      setFinishingRecording(false);
+      setFinishingRecording(
+        false
+      );
     }
   }
 
@@ -949,13 +1032,19 @@ function App() {
       return;
     }
 
-    setSelectedCall(call);
+    setSelectedCall(
+      call
+    );
 
     setProcessing(true);
+
     setProcessingError("");
+
     setProcessingSeconds(0);
 
-    setView("processing");
+    setView(
+      "processing"
+    );
 
     try {
       await processCall(
@@ -1018,10 +1107,95 @@ function App() {
         // Keep current call.
       }
 
-      setView("processing");
+      setView(
+        "processing"
+      );
 
     } finally {
-      setProcessing(false);
+      setProcessing(
+        false
+      );
+    }
+  }
+
+
+  async function handleDeleteCall() {
+    if (
+      !selectedCall
+      || deletingCall
+    ) {
+      return;
+    }
+
+    const confirmed =
+      window.confirm(
+        `Delete "${selectedCall.title}"?\n\n`
+        + "This will permanently remove "
+        + "the recording, transcript and notes."
+      );
+
+    if (!confirmed) {
+      return;
+    }
+
+    setDeletingCall(
+      true
+    );
+
+    setActionMessage("");
+
+    setDetailError("");
+
+    try {
+      await deleteCall(
+        selectedCall.id
+      );
+
+      setCalls(
+        (current) =>
+          current.filter(
+            (call) =>
+              call.id
+              !== selectedCall.id
+          )
+      );
+
+      setSelectedCall(
+        null
+      );
+
+      setSelectedNotes(
+        null
+      );
+
+      setSelectedTranscript(
+        null
+      );
+
+      setView(
+        "calls"
+      );
+
+      setMessage(
+        "Conversation deleted."
+      );
+
+      await loadCalls();
+
+    } catch (error) {
+      setDetailError(
+        error instanceof Error
+          ? error.message
+          : (
+            "Could not delete "
+            + "this conversation."
+          )
+      );
+
+    } finally {
+      setDeletingCall(
+        false
+      );
     }
   }
 
@@ -1041,10 +1215,10 @@ function App() {
       );
 
     try {
-      await (
-        navigator.clipboard
-          .writeText(text)
-      );
+      await navigator.clipboard
+        .writeText(
+          text
+        );
 
       setActionMessage(
         "Notes copied."
@@ -1099,11 +1273,13 @@ function App() {
         selectedCall.title
       )}_notes.txt`;
 
-    document.body.appendChild(
-      link
-    );
+    document.body
+      .appendChild(
+        link
+      );
 
     link.click();
+
     link.remove();
 
     URL.revokeObjectURL(
@@ -1274,6 +1450,9 @@ function App() {
         actionMessage={
           actionMessage
         }
+        deleting={
+          deletingCall
+        }
         onToggleTheme={
           toggleTheme
         }
@@ -1304,6 +1483,9 @@ function App() {
         }
         onWhatsApp={
           shareToWhatsApp
+        }
+        onDelete={
+          handleDeleteCall
         }
       />
     );
@@ -1423,7 +1605,9 @@ function App() {
                     className="call-row"
                     key={call.id}
                     onClick={() =>
-                      openCall(call)
+                      openCall(
+                        call
+                      )
                     }
                   >
                     <div className="call-date">
@@ -1543,7 +1727,9 @@ function ConsentView({
           <label className="consent-check">
             <input
               type="checkbox"
-              checked={confirmed}
+              checked={
+                confirmed
+              }
               onChange={(event) =>
                 onConfirmedChange(
                   event.target.checked
@@ -1706,12 +1892,7 @@ function RecordingView({
           </div>
         </div>
 
-        <div
-          className="recording-actions"
-          style={{
-            gap: "10px",
-          }}
-        >
+        <div className="recording-actions">
           <button
             type="button"
             className="secondary-button"
@@ -1733,7 +1914,9 @@ function RecordingView({
           <button
             type="button"
             className="finish-button"
-            onClick={onFinish}
+            onClick={
+              onFinish
+            }
             disabled={
               finishing
               || changingPauseState
@@ -1903,6 +2086,8 @@ interface CallDetailProps {
   transcriptOpen: boolean;
   theme: Theme;
   actionMessage: string;
+  deleting: boolean;
+
   onToggleTheme: () => void;
   onToggleTranscript: () => void;
   onBack: () => void;
@@ -1911,6 +2096,7 @@ interface CallDetailProps {
   onCopy: () => void;
   onDownload: () => void;
   onWhatsApp: () => void;
+  onDelete: () => void;
 }
 
 
@@ -1923,6 +2109,7 @@ function CallDetail({
   transcriptOpen,
   theme,
   actionMessage,
+  deleting,
   onToggleTheme,
   onToggleTranscript,
   onBack,
@@ -1931,7 +2118,13 @@ function CallDetail({
   onCopy,
   onDownload,
   onWhatsApp,
+  onDelete,
 }: CallDetailProps) {
+  const canDelete =
+    call.status !== "recording"
+    && call.status !== "paused"
+    && call.status !== "processing";
+
   return (
     <main className="app-shell">
       <TopBar
@@ -1962,7 +2155,9 @@ function CallDetail({
               )}
             </span>
 
-            <span>•</span>
+            <span>
+              •
+            </span>
 
             <span>
               {formatDuration(
@@ -1990,7 +2185,7 @@ function CallDetail({
         {error && (
           <div className="notice notice-error">
             <strong>
-              We couldn't load this call.
+              Something went wrong.
             </strong>
 
             <p>
@@ -2001,10 +2196,12 @@ function CallDetail({
 
         {!loading
           && !error
-          && call.status !== "completed"
+          && call.status
+          !== "completed"
           && (
             <IncompleteCall
               call={call}
+
               onContinue={
                 call.status === "created"
                 || (
@@ -2021,6 +2218,7 @@ function CallDetail({
                   ? onContinueCreatedCall
                   : undefined
               }
+
               onProcess={
                 call.status === "processing"
                 || (
@@ -2161,7 +2359,9 @@ function CallDetail({
                 <button
                   type="button"
                   className="action-button"
-                  onClick={onCopy}
+                  onClick={
+                    onCopy
+                  }
                 >
                   Copy
                 </button>
@@ -2184,6 +2384,25 @@ function CallDetail({
               )}
             </>
           )}
+
+        {canDelete && (
+          <section className="recap-section">
+            <button
+              type="button"
+              className="back-button"
+              disabled={
+                deleting
+              }
+              onClick={
+                onDelete
+              }
+            >
+              {deleting
+                ? "Deleting…"
+                : "Delete conversation"}
+            </button>
+          </section>
+        )}
       </article>
     </main>
   );
@@ -2211,9 +2430,10 @@ function IncompleteCall({
         </strong>
 
         <p>
-          This recording session ended unexpectedly
-          before it could be saved. You can start
-          this call again.
+          This recording session ended
+          unexpectedly before it could
+          be saved. You can start this
+          call again.
         </p>
 
         {onContinue && (
@@ -2241,7 +2461,8 @@ function IncompleteCall({
         </strong>
 
         <p>
-          Check your audio devices and try again.
+          Check your audio devices
+          and try again.
         </p>
 
         {onContinue && (
@@ -2265,12 +2486,14 @@ function IncompleteCall({
     return (
       <div className="notice notice-error">
         <strong>
-          Recording didn't finish correctly.
+          Recording didn't finish
+          correctly.
         </strong>
 
         <p>
-          The recording session could not be
-          finalised. You can start the call again.
+          The recording session could
+          not be finalised. You can
+          start the call again.
         </p>
 
         {onContinue && (
@@ -2298,8 +2521,9 @@ function IncompleteCall({
         </strong>
 
         <p>
-          We couldn't prepare the notes. You can
-          try processing the saved recording again.
+          We couldn't prepare the notes.
+          You can try processing the
+          saved recording again.
         </p>
 
         {onProcess && (
@@ -2326,28 +2550,32 @@ function IncompleteCall({
       title:
         "This call hasn't started yet.",
       message:
-        "You can start recording whenever you're ready.",
+        "You can start recording "
+        + "whenever you're ready.",
     },
 
     recording: {
       title:
         "This call is recording.",
       message:
-        "Return to the active recording session to finish it.",
+        "Return to the active recording "
+        + "session to finish it.",
     },
 
     paused: {
       title:
         "This call is paused.",
       message:
-        "Resume the recording when you're ready.",
+        "Resume the recording "
+        + "when you're ready.",
     },
 
     processing: {
       title:
         "Your recording is ready.",
       message:
-        "Process it to create the transcript and call notes.",
+        "Process it to create the "
+        + "transcript and call notes.",
     },
 
     completed: {
@@ -2365,7 +2593,9 @@ function IncompleteCall({
   };
 
   const state =
-    copy[call.status];
+    copy[
+      call.status
+    ];
 
   return (
     <div className="notice">
@@ -2381,7 +2611,9 @@ function IncompleteCall({
         <button
           type="button"
           className="notice-action"
-          onClick={onContinue}
+          onClick={
+            onContinue
+          }
         >
           Start this call
         </button>
@@ -2391,7 +2623,9 @@ function IncompleteCall({
         <button
           type="button"
           className="notice-action"
-          onClick={onProcess}
+          onClick={
+            onProcess
+          }
         >
           Prepare notes
         </button>
@@ -2408,7 +2642,9 @@ function ListSection({
   title: string;
   items: string[];
 }) {
-  if (items.length === 0) {
+  if (
+    items.length === 0
+  ) {
     return null;
   }
 

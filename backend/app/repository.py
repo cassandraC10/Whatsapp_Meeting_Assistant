@@ -1,4 +1,5 @@
 import json
+import shutil
 from datetime import datetime, timezone
 from pathlib import Path
 from uuid import uuid4
@@ -97,15 +98,21 @@ class CallRepository:
             )
         )
 
-        return Call.model_validate(data)
+        return Call.model_validate(
+            data
+        )
 
-    def list_all(self) -> list[Call]:
+    def list_all(
+        self,
+    ) -> list[Call]:
         calls = []
 
         if not CALLS_DIRECTORY.exists():
             return calls
 
-        for directory in CALLS_DIRECTORY.iterdir():
+        for directory in (
+            CALLS_DIRECTORY.iterdir()
+        ):
             if not directory.is_dir():
                 continue
 
@@ -117,11 +124,32 @@ class CallRepository:
                 calls.append(call)
 
         calls.sort(
-            key=lambda item: item.created_at,
+            key=lambda item: (
+                item.created_at
+            ),
             reverse=True,
         )
 
         return calls
+
+    def delete(
+        self,
+        call_id: str,
+    ) -> bool:
+        call_directory = (
+            self._call_directory(
+                call_id
+            )
+        )
+
+        if not call_directory.exists():
+            return False
+
+        shutil.rmtree(
+            call_directory
+        )
+
+        return True
 
     def get_directory(
         self,
@@ -135,4 +163,7 @@ class CallRepository:
         self,
         call_id: str,
     ) -> Path:
-        return CALLS_DIRECTORY / call_id
+        return (
+            CALLS_DIRECTORY
+            / call_id
+        )

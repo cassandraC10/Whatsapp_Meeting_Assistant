@@ -68,6 +68,12 @@ export interface FinishRecordingResponse {
   };
 }
 
+export interface DeleteCallResponse {
+  status: "deleted";
+  call_id: string;
+}
+
+
 async function request<T>(
   path: string,
   options?: RequestInit
@@ -86,18 +92,22 @@ async function request<T>(
         await response.json();
 
       if (data.detail) {
-        message = data.detail;
+        message =
+          data.detail;
       }
 
     } catch {
       // Keep fallback message.
     }
 
-    throw new Error(message);
+    throw new Error(
+      message
+    );
   }
 
   return response.json();
 }
+
 
 export function getCalls():
 Promise<Call[]> {
@@ -106,6 +116,7 @@ Promise<Call[]> {
   );
 }
 
+
 export function getCall(
   callId: string
 ): Promise<Call> {
@@ -113,6 +124,7 @@ export function getCall(
     `/calls/${callId}`
   );
 }
+
 
 export function createCall(
   title: string
@@ -135,6 +147,19 @@ export function createCall(
   );
 }
 
+
+export function deleteCall(
+  callId: string
+): Promise<DeleteCallResponse> {
+  return request<DeleteCallResponse>(
+    `/calls/${callId}`,
+    {
+      method: "DELETE",
+    }
+  );
+}
+
+
 export function startCallRecording(
   callId: string
 ): Promise<Call> {
@@ -145,6 +170,7 @@ export function startCallRecording(
     }
   );
 }
+
 
 export function pauseCallRecording(
   callId: string
@@ -157,6 +183,7 @@ export function pauseCallRecording(
   );
 }
 
+
 export function resumeCallRecording(
   callId: string
 ): Promise<Call> {
@@ -168,6 +195,7 @@ export function resumeCallRecording(
   );
 }
 
+
 export function getRecordingStatus(
   callId: string
 ): Promise<RecordingStatusResponse> {
@@ -175,6 +203,7 @@ export function getRecordingStatus(
     `/calls/${callId}/recording-status`
   );
 }
+
 
 export function finishCallRecording(
   callId: string
@@ -187,6 +216,7 @@ export function finishCallRecording(
   );
 }
 
+
 export async function processCall(
   callId: string
 ): Promise<void> {
@@ -198,6 +228,7 @@ export async function processCall(
   );
 }
 
+
 export function getCallNotes(
   callId: string
 ): Promise<NotesResponse> {
@@ -205,6 +236,7 @@ export function getCallNotes(
     `/calls/${callId}/notes`
   );
 }
+
 
 export function getCallTranscript(
   callId: string
