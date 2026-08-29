@@ -1,13 +1,11 @@
-from fastapi.middleware.cors import CORSMiddleware
 import json
-
-from pathlib import Path
 
 from fastapi import (
     FastAPI,
     HTTPException,
     status,
 )
+from fastapi.middleware.cors import CORSMiddleware
 
 from backend.app.models import (
     Call,
@@ -69,9 +67,7 @@ def health_check():
 @app.post(
     "/calls",
     response_model=Call,
-    status_code=(
-        status.HTTP_201_CREATED
-    ),
+    status_code=status.HTTP_201_CREATED,
 )
 def create_call(
     request: CreateCallRequest,
@@ -86,9 +82,7 @@ def create_call(
     response_model=list[Call],
 )
 def list_calls():
-    return (
-        call_repository.list_all()
-    )
+    return call_repository.list_all()
 
 
 @app.get(
@@ -114,14 +108,15 @@ def start_call_recording(
         call_id
     )
 
-    if (
-        call.status
-        == CallStatus.RECORDING
-    ):
+    if call.status in {
+        CallStatus.RECORDING,
+        CallStatus.PAUSED,
+    }:
         raise HTTPException(
             status_code=409,
             detail=(
-                "This call is already recording."
+                "This call already has "
+                "an active recording."
             ),
         )
 
@@ -168,9 +163,7 @@ def start_call_recording(
     try:
         recorder_manager.start(
             call_id=call_id,
-            output_directory=(
-                call_directory
-            ),
+            output_directory=call_directory,
         )
 
     except Exception as error:
@@ -202,9 +195,10 @@ def start_call_recording(
 
 
 @app.post(
-    "/calls/{call_id}/finish",
+    "/calls/{call_id}/pause",
+    response_model=Call,
 )
-def finish_call_recording(
+def pause_call_recording(
     call_id: str,
 ):
     call = require_call(
@@ -218,8 +212,125 @@ def finish_call_recording(
         raise HTTPException(
             status_code=409,
             detail=(
-                "This call is not "
-                "currently recording."
+                "Only an active recording "
+                "can be paused."
+            ),
+        )
+
+    if not recorder_manager.is_recording(
+        call_id
+    ):
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "No active recorder was found "
+                "for this call."
+            ),
+        )
+
+    try:
+        recorder_manager.pause(
+            call_id
+        )
+
+    except Exception as error:
+        raise HTTPException(
+            status_code=500,
+            detail=(
+                "Could not pause recording: "
+                f"{error}"
+            ),
+        ) from error
+
+    call.status = (
+        CallStatus.PAUSED
+    )
+
+    call_repository.save(
+        call
+    )
+
+    return call
+
+
+@app.post(
+    "/calls/{call_id}/resume",
+    response_model=Call,
+)
+def resume_call_recording(
+    call_id: str,
+):
+    call = require_call(
+        call_id
+    )
+
+    if (
+        call.status
+        != CallStatus.PAUSED
+    ):
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "Only a paused recording "
+                "can be resumed."
+            ),
+        )
+
+    if not recorder_manager.is_recording(
+        call_id
+    ):
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "No active recorder was found "
+                "for this call."
+            ),
+        )
+
+    try:
+        recorder_manager.resume(
+            call_id
+        )
+
+    except Exception as error:
+        raise HTTPException(
+            status_code=500,
+            detail=(
+                "Could not resume recording: "
+                f"{error}"
+            ),
+        ) from error
+
+    call.status = (
+        CallStatus.RECORDING
+    )
+
+    call_repository.save(
+        call
+    )
+
+    return call
+
+
+@app.post(
+    "/calls/{call_id}/finish",
+)
+def finish_call_recording(
+    call_id: str,
+):
+    call = require_call(
+        call_id
+    )
+
+    if call.status not in {
+        CallStatus.RECORDING,
+        CallStatus.PAUSED,
+    }:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "This call does not have "
+                "an active recording."
             ),
         )
 
@@ -237,8 +348,8 @@ def finish_call_recording(
         raise HTTPException(
             status_code=409,
             detail=(
-                "The call is marked as recording, "
-                "but no active recorder was found."
+                "The call is marked as active, "
+                "but no recorder was found."
             ),
         )
 
@@ -325,6 +436,11 @@ def get_recording_status(
                 call_id
             )
         ),
+        "is_paused": (
+            recorder_manager.is_paused(
+                call_id
+            )
+        ),
         "elapsed_seconds": (
             recorder_manager.elapsed_seconds(
                 call_id
@@ -349,10 +465,10 @@ def process_call(
         )
     )
 
-    if (
-        call.status
-        == CallStatus.RECORDING
-    ):
+    if call.status in {
+        CallStatus.RECORDING,
+        CallStatus.PAUSED,
+    }:
         raise HTTPException(
             status_code=409,
             detail=(
@@ -429,8 +545,7 @@ def get_call_transcript(
     return {
         "call_id": call_id,
         "transcript": (
-            transcript_file
-            .read_text(
+            transcript_file.read_text(
                 encoding="utf-8"
             )
         ),
