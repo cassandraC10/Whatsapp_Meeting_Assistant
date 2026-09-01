@@ -19,12 +19,14 @@ import {
   pauseCallRecording,
   processCall,
   resumeCallRecording,
+  searchCalls,
   startCallRecording,
 } from "./api";
 
 import type {
   Call,
   CallNotes,
+  SearchResult,
 } from "./api";
 
 
@@ -62,8 +64,8 @@ function formatDuration(
   }
 
   return (
-    `${minutes}m ` +
-    `${remainingSeconds}s`
+    `${minutes}m `
+    + `${remainingSeconds}s`
   );
 }
 
@@ -84,8 +86,10 @@ function formatTimer(
 
   const minutes =
     Math.floor(
-      (totalSeconds % 3600)
-      / 60
+      (
+        totalSeconds
+        % 3600
+      ) / 60
     );
 
   const remainingSeconds =
@@ -100,7 +104,10 @@ function formatTimer(
       .map(
         (value) =>
           String(value)
-            .padStart(2, "0")
+            .padStart(
+              2,
+              "0"
+            )
       )
       .join(":");
   }
@@ -112,7 +119,10 @@ function formatTimer(
     .map(
       (value) =>
         String(value)
-          .padStart(2, "0")
+          .padStart(
+            2,
+            "0"
+          )
     )
     .join(":");
 }
@@ -121,15 +131,18 @@ function formatTimer(
 function formatDate(
   value: string
 ) {
-  return new Intl.DateTimeFormat(
-    "en",
-    {
-      day: "numeric",
-      month: "short",
-      year: "numeric",
-    }
-  ).format(
-    new Date(value)
+  return (
+    new Intl.DateTimeFormat(
+      "en",
+      {
+        day: "numeric",
+        month: "short",
+        year: "numeric",
+      }
+    )
+      .format(
+        new Date(value)
+      )
   );
 }
 
@@ -156,18 +169,25 @@ function buildShareableNotes(
   call: Call,
   notes: CallNotes
 ) {
-  const sections: string[] = [];
+  const sections: string[] =
+    [];
 
   sections.push(
-    `*${notes.title || call.title}*`
+    `*${
+      notes.title
+      || call.title
+    }*`
   );
 
   sections.push(
-    `\n*Summary*\n${notes.summary}`
+    `\n*Summary*\n${
+      notes.summary
+    }`
   );
 
   if (
-    notes.key_points.length > 0
+    notes.key_points.length
+    > 0
   ) {
     sections.push(
       "\n*Key points*\n"
@@ -181,48 +201,68 @@ function buildShareableNotes(
   }
 
   if (
-    notes.decisions.length > 0
+    notes.decisions.length
+    > 0
   ) {
     sections.push(
       "\n*Decisions*\n"
       + notes.decisions
         .map(
           (item) =>
-            `• ${item.decision}`
+            `• ${
+              item.decision
+            }`
         )
         .join("\n")
     );
   }
 
   if (
-    notes.my_action_items.length > 0
-    || notes.their_action_items.length > 0
+    notes
+      .my_action_items
+      .length > 0
+    || notes
+      .their_action_items
+      .length > 0
   ) {
-    const lines: string[] = [];
+    const lines: string[] =
+      [];
 
     if (
-      notes.my_action_items.length > 0
+      notes
+        .my_action_items
+        .length > 0
     ) {
       lines.push(
         "*My next steps*"
       );
 
       lines.push(
-        ...notes.my_action_items.map(
-          (item) =>
-            `• ${item.task}${
-              item.deadline
-                ? ` — ${item.deadline}`
-                : ""
-            }`
-        )
+        ...notes
+          .my_action_items
+          .map(
+            (item) =>
+              `• ${item.task}${
+                item.deadline
+                  ? (
+                    ` — ${
+                      item.deadline
+                    }`
+                  )
+                  : ""
+              }`
+          )
       );
     }
 
     if (
-      notes.their_action_items.length > 0
+      notes
+        .their_action_items
+        .length > 0
     ) {
-      if (lines.length > 0) {
+      if (
+        lines.length > 0
+      ) {
         lines.push("");
       }
 
@@ -231,14 +271,20 @@ function buildShareableNotes(
       );
 
       lines.push(
-        ...notes.their_action_items.map(
-          (item) =>
-            `• ${item.task}${
-              item.deadline
-                ? ` — ${item.deadline}`
-                : ""
-            }`
-        )
+        ...notes
+          .their_action_items
+          .map(
+            (item) =>
+              `• ${item.task}${
+                item.deadline
+                  ? (
+                    ` — ${
+                      item.deadline
+                    }`
+                  )
+                  : ""
+              }`
+          )
       );
     }
 
@@ -249,11 +295,14 @@ function buildShareableNotes(
   }
 
   if (
-    notes.important_dates.length > 0
+    notes
+      .important_dates
+      .length > 0
   ) {
     sections.push(
       "\n*Important dates*\n"
-      + notes.important_dates
+      + notes
+        .important_dates
         .map(
           (item) =>
             `• ${item}`
@@ -262,14 +311,18 @@ function buildShareableNotes(
     );
   }
 
-  if (notes.follow_up) {
+  if (
+    notes.follow_up
+  ) {
     sections.push(
-      `\n*Follow-up*\n`
+      "\n*Follow-up*\n"
       + notes.follow_up
     );
   }
 
-  return sections.join("\n");
+  return sections.join(
+    "\n"
+  );
 }
 
 
@@ -277,10 +330,16 @@ function buildDownloadNotes(
   call: Call,
   notes: CallNotes
 ) {
-  return buildShareableNotes(
-    call,
-    notes
-  ).replace(/\*/g, "");
+  return (
+    buildShareableNotes(
+      call,
+      notes
+    )
+      .replace(
+        /\*/g,
+        ""
+      )
+  );
 }
 
 
@@ -300,7 +359,48 @@ function safeFilename(
       );
 
   return (
-    clean || "call_notes"
+    clean
+    || "call_notes"
+  );
+}
+
+
+function formatMatchLabel(
+  value: string
+) {
+  const labels:
+  Record<string, string> = {
+    title:
+      "Title",
+
+    summary:
+      "Summary",
+
+    key_points:
+      "Key points",
+
+    decisions:
+      "Decisions",
+
+    my_action_items:
+      "My next steps",
+
+    their_action_items:
+      "Their next steps",
+
+    important_dates:
+      "Important dates",
+
+    follow_up:
+      "Follow-up",
+
+    transcript:
+      "Transcript",
+  };
+
+  return (
+    labels[value]
+    || value
   );
 }
 
@@ -323,7 +423,9 @@ function App() {
   const [
     calls,
     setCalls,
-  ] = useState<Call[]>([]);
+  ] = useState<Call[]>(
+    []
+  );
 
   const [
     title,
@@ -437,6 +539,39 @@ function App() {
   ] = useState(false);
 
 
+  /*
+   * V3 SEARCH
+   */
+
+  const [
+    searchQuery,
+    setSearchQuery,
+  ] = useState("");
+
+  const [
+    searchResults,
+    setSearchResults,
+  ] = useState<SearchResult[]>(
+    []
+  );
+
+  const [
+    searching,
+    setSearching,
+  ] = useState(false);
+
+  const [
+    searchError,
+    setSearchError,
+  ] = useState("");
+
+
+  const searchActive =
+    searchQuery
+      .trim()
+      .length > 0;
+
+
   useEffect(() => {
     document
       .documentElement
@@ -449,12 +584,106 @@ function App() {
       "tca-theme",
       theme
     );
-  }, [theme]);
+  }, [
+    theme,
+  ]);
 
 
   useEffect(() => {
     loadCalls();
   }, []);
+
+
+  useEffect(() => {
+    const cleanQuery =
+      searchQuery.trim();
+
+    if (!cleanQuery) {
+      setSearchResults(
+        []
+      );
+
+      setSearchError("");
+
+      setSearching(false);
+
+      return;
+    }
+
+    let cancelled =
+      false;
+
+    const timeout =
+      window.setTimeout(
+        async () => {
+          setSearching(
+            true
+          );
+
+          setSearchError(
+            ""
+          );
+
+          try {
+            const result =
+              await searchCalls(
+                cleanQuery
+              );
+
+            if (
+              cancelled
+            ) {
+              return;
+            }
+
+            setSearchResults(
+              result.results
+            );
+
+          } catch (error) {
+            if (
+              cancelled
+            ) {
+              return;
+            }
+
+            setSearchResults(
+              []
+            );
+
+            setSearchError(
+              error instanceof Error
+                ? error.message
+                : (
+                  "Could not search "
+                  + "conversations."
+                )
+            );
+
+          } finally {
+            if (
+              !cancelled
+            ) {
+              setSearching(
+                false
+              );
+            }
+          }
+        },
+        250
+      );
+
+    return () => {
+      cancelled = true;
+
+      window.clearTimeout(
+        timeout
+      );
+    };
+
+  }, [
+    searchQuery,
+  ]);
 
 
   useEffect(() => {
@@ -465,7 +694,8 @@ function App() {
       return;
     }
 
-    let stopped = false;
+    let stopped =
+      false;
 
     async function pollStatus() {
       try {
@@ -474,7 +704,9 @@ function App() {
             selectedCall!.id
           );
 
-        if (stopped) {
+        if (
+          stopped
+        ) {
           return;
         }
 
@@ -490,26 +722,40 @@ function App() {
 
             if (
               current.status
-              === result.status
-              && current.failure_reason
-              === result.failure_reason
+                === result.status
+              && (
+                current
+                  .failure_reason
+                === (
+                  result
+                    .failure_reason
+                )
+              )
             ) {
               return current;
             }
 
             return {
               ...current,
-              status: result.status,
+
+              status:
+                result.status,
+
               failure_reason:
-                result.failure_reason,
+                result
+                  .failure_reason,
             };
           }
         );
 
-        setRecordingError("");
+        setRecordingError(
+          ""
+        );
 
       } catch (error) {
-        if (stopped) {
+        if (
+          stopped
+        ) {
           return;
         }
 
@@ -539,6 +785,7 @@ function App() {
         interval
       );
     };
+
   }, [
     view,
     selectedCall?.id,
@@ -569,6 +816,7 @@ function App() {
         interval
       );
     };
+
   }, [
     view,
     processing,
@@ -585,15 +833,37 @@ function App() {
   }
 
 
+  function clearSearch() {
+    setSearchQuery(
+      ""
+    );
+
+    setSearchResults(
+      []
+    );
+
+    setSearchError(
+      ""
+    );
+  }
+
+
   async function loadCalls() {
-    setLoadingCalls(true);
+    setLoadingCalls(
+      true
+    );
 
     try {
       const result =
         await getCalls();
 
-      setCalls(result);
-      setMessage("");
+      setCalls(
+        result
+      );
+
+      setMessage(
+        ""
+      );
 
     } catch (error) {
       setMessage(
@@ -606,7 +876,9 @@ function App() {
       );
 
     } finally {
-      setLoadingCalls(false);
+      setLoadingCalls(
+        false
+      );
     }
   }
 
@@ -619,7 +891,7 @@ function App() {
         current.map(
           (call) =>
             call.id
-            === updatedCall.id
+              === updatedCall.id
               ? updatedCall
               : call
         )
@@ -632,12 +904,19 @@ function App() {
   ) {
     event.preventDefault();
 
-    if (creating) {
+    if (
+      creating
+    ) {
       return;
     }
 
-    setCreating(true);
-    setMessage("");
+    setCreating(
+      true
+    );
+
+    setMessage(
+      ""
+    );
 
     try {
       const call =
@@ -656,15 +935,21 @@ function App() {
         call
       );
 
-      setTitle("");
+      setTitle(
+        ""
+      );
 
       setConsentConfirmed(
         false
       );
 
-      setRecordingError("");
+      setRecordingError(
+        ""
+      );
 
-      setElapsedSeconds(0);
+      setElapsedSeconds(
+        0
+      );
 
       setView(
         "consent"
@@ -681,7 +966,9 @@ function App() {
       );
 
     } finally {
-      setCreating(false);
+      setCreating(
+        false
+      );
     }
   }
 
@@ -689,20 +976,37 @@ function App() {
   async function loadCompletedCall(
     callId: string
   ) {
-    setLoadingDetail(true);
-    setDetailError("");
-    setActionMessage("");
+    setLoadingDetail(
+      true
+    );
+
+    setDetailError(
+      ""
+    );
+
+    setActionMessage(
+      ""
+    );
 
     try {
       const [
         updatedCall,
         notesResult,
         transcriptResult,
-      ] = await Promise.all([
-        getCall(callId),
-        getCallNotes(callId),
-        getCallTranscript(callId),
-      ]);
+      ] =
+        await Promise.all([
+          getCall(
+            callId
+          ),
+
+          getCallNotes(
+            callId
+          ),
+
+          getCallTranscript(
+            callId
+          ),
+        ]);
 
       setSelectedCall(
         updatedCall
@@ -713,7 +1017,8 @@ function App() {
       );
 
       setSelectedTranscript(
-        transcriptResult.transcript
+        transcriptResult
+          .transcript
       );
 
       updateCallInList(
@@ -743,7 +1048,9 @@ function App() {
       );
 
     } finally {
-      setLoadingDetail(false);
+      setLoadingDetail(
+        false
+      );
     }
   }
 
@@ -767,13 +1074,17 @@ function App() {
       false
     );
 
-    setDetailError("");
+    setDetailError(
+      ""
+    );
 
-    setActionMessage("");
+    setActionMessage(
+      ""
+    );
 
     if (
       call.status
-      === "completed"
+        === "completed"
     ) {
       await loadCompletedCall(
         call.id
@@ -809,21 +1120,33 @@ function App() {
       false
     );
 
-    setDetailError("");
+    setDetailError(
+      ""
+    );
 
-    setRecordingError("");
+    setRecordingError(
+      ""
+    );
 
-    setProcessingError("");
+    setProcessingError(
+      ""
+    );
 
-    setActionMessage("");
+    setActionMessage(
+      ""
+    );
 
     setConsentConfirmed(
       false
     );
 
-    setElapsedSeconds(0);
+    setElapsedSeconds(
+      0
+    );
 
-    setProcessingSeconds(0);
+    setProcessingSeconds(
+      0
+    );
 
     loadCalls();
   }
@@ -840,9 +1163,13 @@ function App() {
       false
     );
 
-    setRecordingError("");
+    setRecordingError(
+      ""
+    );
 
-    setElapsedSeconds(0);
+    setElapsedSeconds(
+      0
+    );
 
     setView(
       "consent"
@@ -859,9 +1186,13 @@ function App() {
       return;
     }
 
-    setStartingRecording(true);
+    setStartingRecording(
+      true
+    );
 
-    setRecordingError("");
+    setRecordingError(
+      ""
+    );
 
     try {
       const updatedCall =
@@ -877,7 +1208,9 @@ function App() {
         updatedCall
       );
 
-      setElapsedSeconds(0);
+      setElapsedSeconds(
+        0
+      );
 
       setView(
         "recording"
@@ -914,18 +1247,24 @@ function App() {
       true
     );
 
-    setRecordingError("");
+    setRecordingError(
+      ""
+    );
 
     try {
       const updatedCall =
         selectedCall.status
-        === "paused"
-          ? await resumeCallRecording(
+          === "paused"
+          ? (
+            await resumeCallRecording(
               selectedCall.id
             )
-          : await pauseCallRecording(
+          )
+          : (
+            await pauseCallRecording(
               selectedCall.id
-            );
+            )
+          );
 
       setSelectedCall(
         updatedCall
@@ -965,7 +1304,9 @@ function App() {
       true
     );
 
-    setRecordingError("");
+    setRecordingError(
+      ""
+    );
 
     try {
       const result =
@@ -995,9 +1336,13 @@ function App() {
         null
       );
 
-      setProcessingError("");
+      setProcessingError(
+        ""
+      );
 
-      setProcessingSeconds(0);
+      setProcessingSeconds(
+        0
+      );
 
       setView(
         "processing"
@@ -1028,7 +1373,9 @@ function App() {
   async function runProcessing(
     call: Call
   ) {
-    if (processing) {
+    if (
+      processing
+    ) {
       return;
     }
 
@@ -1036,11 +1383,17 @@ function App() {
       call
     );
 
-    setProcessing(true);
+    setProcessing(
+      true
+    );
 
-    setProcessingError("");
+    setProcessingError(
+      ""
+    );
 
-    setProcessingSeconds(0);
+    setProcessingSeconds(
+      0
+    );
 
     setView(
       "processing"
@@ -1066,7 +1419,7 @@ function App() {
 
       if (
         updatedCall.status
-        !== "completed"
+          !== "completed"
       ) {
         throw new Error(
           "Processing finished, "
@@ -1129,12 +1482,19 @@ function App() {
 
     const confirmed =
       window.confirm(
-        `Delete "${selectedCall.title}"?\n\n`
-        + "This will permanently remove "
-        + "the recording, transcript and notes."
+        `Delete "${
+          selectedCall.title
+        }"?\n\n`
+        + (
+          "This will permanently "
+          + "remove the recording, "
+          + "transcript and notes."
+        )
       );
 
-    if (!confirmed) {
+    if (
+      !confirmed
+    ) {
       return;
     }
 
@@ -1142,9 +1502,13 @@ function App() {
       true
     );
 
-    setActionMessage("");
+    setActionMessage(
+      ""
+    );
 
-    setDetailError("");
+    setDetailError(
+      ""
+    );
 
     try {
       await deleteCall(
@@ -1156,7 +1520,7 @@ function App() {
           current.filter(
             (call) =>
               call.id
-              !== selectedCall.id
+                !== selectedCall.id
           )
       );
 
@@ -1181,6 +1545,19 @@ function App() {
       );
 
       await loadCalls();
+
+      if (
+        searchActive
+      ) {
+        const result =
+          await searchCalls(
+            searchQuery
+          );
+
+        setSearchResults(
+          result.results
+        );
+      }
 
     } catch (error) {
       setDetailError(
@@ -1215,7 +1592,8 @@ function App() {
       );
 
     try {
-      await navigator.clipboard
+      await navigator
+        .clipboard
         .writeText(
           text
         );
@@ -1248,7 +1626,9 @@ function App() {
 
     const blob =
       new Blob(
-        [text],
+        [
+          text,
+        ],
         {
           type:
             "text/plain;"
@@ -1266,12 +1646,15 @@ function App() {
         "a"
       );
 
-    link.href = url;
+    link.href =
+      url;
 
     link.download =
-      `${safeFilename(
-        selectedCall.title
-      )}_notes.txt`;
+      `${
+        safeFilename(
+          selectedCall.title
+        )
+      }_notes.txt`;
 
     document.body
       .appendChild(
@@ -1515,126 +1898,367 @@ function App() {
           </div>
         </div>
 
-        <form
-          className="call-composer"
-          onSubmit={
-            handleSubmit
-          }
-        >
-          <div className="composer-copy">
-            <span className="section-label">
-              New call
+
+        <section className="conversation-search">
+          <span className="section-label">
+            Find a conversation
+          </span>
+
+          <div className="search-field">
+            <span
+              className="search-icon"
+              aria-hidden="true"
+            >
+              ⌕
             </span>
 
-            <label
-              htmlFor="call-title"
-            >
-              What is this call about?
-            </label>
-          </div>
-
-          <div className="composer-row">
             <input
-              id="call-title"
-              value={title}
-              onChange={(event) =>
-                setTitle(
-                  event.target.value
-                )
+              type="search"
+              value={
+                searchQuery
+              }
+              onChange={
+                (event) =>
+                  setSearchQuery(
+                    event.target.value
+                  )
               }
               placeholder={
-                "Product feedback "
-                + "with Jane"
+                "Search conversations"
               }
-              maxLength={120}
+              aria-label={
+                "Search conversations"
+              }
+              autoComplete="off"
             />
 
-            <button
-              className="primary-button"
-              type="submit"
-              disabled={creating}
-            >
-              {creating
-                ? "Starting…"
-                : "Start call"}
-            </button>
+            {searchActive && (
+              <button
+                type="button"
+                className="search-clear"
+                onClick={
+                  clearSearch
+                }
+                aria-label={
+                  "Clear search"
+                }
+              >
+                ×
+              </button>
+            )}
           </div>
-        </form>
+        </section>
 
-        {message && (
-          <p className="system-message">
-            {message}
+
+        {!searchActive && (
+          <form
+            className="call-composer"
+            onSubmit={
+              handleSubmit
+            }
+          >
+            <div className="composer-copy">
+              <span className="section-label">
+                New call
+              </span>
+
+              <label
+                htmlFor="call-title"
+              >
+                What is this call about?
+              </label>
+            </div>
+
+            <div className="composer-row">
+              <input
+                id="call-title"
+                value={
+                  title
+                }
+                onChange={
+                  (event) =>
+                    setTitle(
+                      event
+                        .target
+                        .value
+                    )
+                }
+                placeholder={
+                  "Product feedback "
+                  + "with Jane"
+                }
+                maxLength={
+                  120
+                }
+              />
+
+              <button
+                className="primary-button"
+                type="submit"
+                disabled={
+                  creating
+                }
+              >
+                {creating
+                  ? "Starting…"
+                  : "Start call"}
+              </button>
+            </div>
+          </form>
+        )}
+
+
+        {message
+          && !searchActive
+          && (
+            <p className="system-message">
+              {message}
+            </p>
+          )}
+
+
+        {searchActive ? (
+          <SearchResultsView
+            query={
+              searchQuery
+            }
+            results={
+              searchResults
+            }
+            searching={
+              searching
+            }
+            error={
+              searchError
+            }
+            onOpenCall={
+              openCall
+            }
+            onClear={
+              clearSearch
+            }
+          />
+
+        ) : (
+          <section className="history">
+            <div className="history-heading">
+              <div>
+                <span className="section-label">
+                  Recent conversations
+                </span>
+
+                <h2>
+                  Your calls
+                </h2>
+              </div>
+
+              <span className="call-count">
+                {calls.length}
+              </span>
+            </div>
+
+            {loadingCalls ? (
+              <p className="empty-state">
+                Loading conversations…
+              </p>
+
+            ) : calls.length
+              === 0 ? (
+                <p className="empty-state">
+                  No calls yet. Your
+                  conversations will
+                  appear here.
+                </p>
+
+              ) : (
+                <div className="call-list">
+                  {calls.map(
+                    (call) => (
+                      <CallRow
+                        key={
+                          call.id
+                        }
+                        call={
+                          call
+                        }
+                        onOpen={() =>
+                          openCall(
+                            call
+                          )
+                        }
+                      />
+                    )
+                  )}
+                </div>
+              )}
+          </section>
+        )}
+      </section>
+    </main>
+  );
+}
+
+
+function SearchResultsView({
+  query,
+  results,
+  searching,
+  error,
+  onOpenCall,
+  onClear,
+}: {
+  query: string;
+  results: SearchResult[];
+  searching: boolean;
+  error: string;
+
+  onOpenCall:
+    (call: Call) => void;
+
+  onClear:
+    () => void;
+}) {
+  return (
+    <section className="history search-results">
+      <div className="history-heading">
+        <div>
+          <span className="section-label">
+            Search results
+          </span>
+
+          <h2>
+            {searching
+              ? "Searching…"
+              : (
+                `${results.length} ${
+                  results.length
+                    === 1
+                    ? "conversation"
+                    : "conversations"
+                }`
+              )}
+          </h2>
+        </div>
+
+        {!searching && (
+          <button
+            type="button"
+            className="search-reset-button"
+            onClick={
+              onClear
+            }
+          >
+            Clear
+          </button>
+        )}
+      </div>
+
+
+      {error && (
+        <div className="notice notice-error">
+          <strong>
+            Search didn't work.
+          </strong>
+
+          <p>
+            {error}
+          </p>
+        </div>
+      )}
+
+
+      {!error
+        && searching
+        && (
+          <p className="empty-state">
+            Looking through your
+            conversations…
           </p>
         )}
 
-        <section className="history">
-          <div className="history-heading">
-            <div>
-              <span className="section-label">
-                Recent conversations
-              </span>
 
-              <h2>
-                Your calls
-              </h2>
-            </div>
+      {!error
+        && !searching
+        && results.length === 0
+        && (
+          <div className="search-empty">
+            <strong>
+              No conversations found.
+            </strong>
 
-            <span className="call-count">
-              {calls.length}
-            </span>
+            <p>
+              Nothing matched
+              “{query.trim()}”.
+              Try another word
+              or phrase.
+            </p>
           </div>
+        )}
 
-          {loadingCalls ? (
-            <p className="empty-state">
-              Loading conversations…
-            </p>
 
-          ) : calls.length === 0 ? (
-            <p className="empty-state">
-              No calls yet. Your
-              conversations will
-              appear here.
-            </p>
-
-          ) : (
-            <div className="call-list">
-              {calls.map(
-                (call) => (
-                  <button
-                    type="button"
-                    className="call-row"
-                    key={call.id}
-                    onClick={() =>
-                      openCall(
-                        call
-                      )
-                    }
-                  >
-                    <div className="call-date">
-                      {formatDate(
-                        call.created_at
-                      )}
-                    </div>
-
-                    <div className="call-main">
+      {!error
+        && !searching
+        && results.length > 0
+        && (
+          <div className="search-result-list">
+            {results.map(
+              (result) => (
+                <button
+                  type="button"
+                  className="search-result-row"
+                  key={
+                    result.call.id
+                  }
+                  onClick={() =>
+                    onOpenCall(
+                      result.call
+                    )
+                  }
+                >
+                  <div className="search-result-top">
+                    <div>
                       <h3>
-                        {call.title}
+                        {
+                          result
+                            .call
+                            .title
+                        }
                       </h3>
 
                       <div className="call-meta">
                         <span>
+                          {formatDate(
+                            result
+                              .call
+                              .created_at
+                          )}
+                        </span>
+
+                        <span>
                           {formatDuration(
-                            call.duration_seconds
+                            result
+                              .call
+                              .duration_seconds
                           )}
                         </span>
 
                         <span
                           className={
                             `status `
-                            + `status-${call.status}`
+                            + (
+                              `status-${
+                                result
+                                  .call
+                                  .status
+                              }`
+                            )
                           }
                         >
-                          {call.status}
+                          {
+                            result
+                              .call
+                              .status
+                          }
                         </span>
                       </div>
                     </div>
@@ -1642,14 +2266,96 @@ function App() {
                     <span className="call-arrow">
                       →
                     </span>
-                  </button>
-                )
-              )}
-            </div>
-          )}
-        </section>
-      </section>
-    </main>
+                  </div>
+
+                  {result.snippet && (
+                    <p className="search-snippet">
+                      {result.snippet}
+                    </p>
+                  )}
+
+                  {result
+                    .matched_in
+                    .length > 0
+                    && (
+                      <div className="search-match-source">
+                        Found in{" "}
+                        {
+                          result
+                            .matched_in
+                            .slice(
+                              0,
+                              3
+                            )
+                            .map(
+                              formatMatchLabel
+                            )
+                            .join(
+                              " · "
+                            )
+                        }
+                      </div>
+                    )}
+                </button>
+              )
+            )}
+          </div>
+        )}
+    </section>
+  );
+}
+
+
+function CallRow({
+  call,
+  onOpen,
+}: {
+  call: Call;
+  onOpen: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      className="call-row"
+      onClick={
+        onOpen
+      }
+    >
+      <div className="call-date">
+        {formatDate(
+          call.created_at
+        )}
+      </div>
+
+      <div className="call-main">
+        <h3>
+          {call.title}
+        </h3>
+
+        <div className="call-meta">
+          <span>
+            {formatDuration(
+              call.duration_seconds
+            )}
+          </span>
+
+          <span
+            className={
+              `status `
+              + `status-${
+                call.status
+              }`
+            }
+          >
+            {call.status}
+          </span>
+        </div>
+      </div>
+
+      <span className="call-arrow">
+        →
+      </span>
+    </button>
   );
 }
 
@@ -1670,11 +2376,20 @@ function ConsentView({
   confirmed: boolean;
   starting: boolean;
   error: string;
-  onToggleTheme: () => void;
+
+  onToggleTheme:
+    () => void;
+
   onConfirmedChange:
-    (confirmed: boolean) => void;
-  onStart: () => void;
-  onBack: () => void;
+    (
+      confirmed: boolean
+    ) => void;
+
+  onStart:
+    () => void;
+
+  onBack:
+    () => void;
 }) {
   return (
     <main className="app-shell">
@@ -1689,7 +2404,9 @@ function ConsentView({
         <button
           type="button"
           className="back-button"
-          onClick={onBack}
+          onClick={
+            onBack
+          }
         >
           ← Calls
         </button>
@@ -1730,10 +2447,13 @@ function ConsentView({
               checked={
                 confirmed
               }
-              onChange={(event) =>
-                onConfirmedChange(
-                  event.target.checked
-                )
+              onChange={
+                (event) =>
+                  onConfirmedChange(
+                    event
+                      .target
+                      .checked
+                  )
               }
             />
 
@@ -1750,7 +2470,9 @@ function ConsentView({
           <button
             type="button"
             className="secondary-button"
-            onClick={onBack}
+            onClick={
+              onBack
+            }
           >
             Cancel
           </button>
@@ -1762,7 +2484,9 @@ function ConsentView({
               !confirmed
               || starting
             }
-            onClick={onStart}
+            onClick={
+              onStart
+            }
           >
             {starting
               ? "Starting…"
@@ -1803,12 +2527,19 @@ function RecordingView({
   finishing: boolean;
   changingPauseState: boolean;
   error: string;
-  onToggleTheme: () => void;
-  onPauseResume: () => void;
-  onFinish: () => void;
+
+  onToggleTheme:
+    () => void;
+
+  onPauseResume:
+    () => void;
+
+  onFinish:
+    () => void;
 }) {
   const paused =
-    call.status === "paused";
+    call.status
+      === "paused";
 
   return (
     <main className="app-shell">
@@ -1969,9 +2700,15 @@ function ProcessingView({
   seconds: number;
   processing: boolean;
   error: string;
-  onToggleTheme: () => void;
-  onRetry: () => void;
-  onBack: () => void;
+
+  onToggleTheme:
+    () => void;
+
+  onRetry:
+    () => void;
+
+  onBack:
+    () => void;
 }) {
   return (
     <main className="app-shell">
@@ -2053,7 +2790,9 @@ function ProcessingView({
               <button
                 type="button"
                 className="secondary-button"
-                onClick={onBack}
+                onClick={
+                  onBack
+                }
               >
                 Back to calls
               </button>
@@ -2061,8 +2800,12 @@ function ProcessingView({
               <button
                 type="button"
                 className="primary-button"
-                disabled={processing}
-                onClick={onRetry}
+                disabled={
+                  processing
+                }
+                onClick={
+                  onRetry
+                }
               >
                 {processing
                   ? "Trying again…"
@@ -2079,24 +2822,57 @@ function ProcessingView({
 
 interface CallDetailProps {
   call: Call;
-  notes: CallNotes | null;
-  transcript: string | null;
-  loading: boolean;
-  error: string;
-  transcriptOpen: boolean;
-  theme: Theme;
-  actionMessage: string;
-  deleting: boolean;
 
-  onToggleTheme: () => void;
-  onToggleTranscript: () => void;
-  onBack: () => void;
-  onContinueCreatedCall: () => void;
-  onProcessCall: () => void;
-  onCopy: () => void;
-  onDownload: () => void;
-  onWhatsApp: () => void;
-  onDelete: () => void;
+  notes:
+    CallNotes | null;
+
+  transcript:
+    string | null;
+
+  loading:
+    boolean;
+
+  error:
+    string;
+
+  transcriptOpen:
+    boolean;
+
+  theme:
+    Theme;
+
+  actionMessage:
+    string;
+
+  deleting:
+    boolean;
+
+  onToggleTheme:
+    () => void;
+
+  onToggleTranscript:
+    () => void;
+
+  onBack:
+    () => void;
+
+  onContinueCreatedCall:
+    () => void;
+
+  onProcessCall:
+    () => void;
+
+  onCopy:
+    () => void;
+
+  onDownload:
+    () => void;
+
+  onWhatsApp:
+    () => void;
+
+  onDelete:
+    () => void;
 }
 
 
@@ -2121,9 +2897,12 @@ function CallDetail({
   onDelete,
 }: CallDetailProps) {
   const canDelete =
-    call.status !== "recording"
-    && call.status !== "paused"
-    && call.status !== "processing";
+    call.status
+      !== "recording"
+    && call.status
+      !== "paused"
+    && call.status
+      !== "processing";
 
   return (
     <main className="app-shell">
@@ -2138,7 +2917,9 @@ function CallDetail({
         <button
           type="button"
           className="back-button"
-          onClick={onBack}
+          onClick={
+            onBack
+          }
         >
           ← Calls
         </button>
@@ -2168,7 +2949,9 @@ function CallDetail({
             <span
               className={
                 `status `
-                + `status-${call.status}`
+                + `status-${
+                  call.status
+                }`
               }
             >
               {call.status}
@@ -2197,22 +2980,27 @@ function CallDetail({
         {!loading
           && !error
           && call.status
-          !== "completed"
+            !== "completed"
           && (
             <IncompleteCall
               call={call}
 
               onContinue={
-                call.status === "created"
+                call.status
+                  === "created"
                 || (
-                  call.status === "failed"
+                  call.status
+                    === "failed"
                   && (
-                    call.failure_reason
-                    === "recording_interrupted"
-                    || call.failure_reason
-                    === "recording_start_failed"
-                    || call.failure_reason
-                    === "recording_finish_failed"
+                    call
+                      .failure_reason
+                      === "recording_interrupted"
+                    || call
+                      .failure_reason
+                      === "recording_start_failed"
+                    || call
+                      .failure_reason
+                      === "recording_finish_failed"
                   )
                 )
                   ? onContinueCreatedCall
@@ -2220,13 +3008,18 @@ function CallDetail({
               }
 
               onProcess={
-                call.status === "processing"
+                call.status
+                  === "processing"
                 || (
-                  call.status === "failed"
+                  call.status
+                    === "failed"
                   && (
                     !call.failure_reason
-                    || call.failure_reason
-                    === "processing_failed"
+                    || (
+                      call
+                        .failure_reason
+                      === "processing_failed"
+                    )
                   )
                 )
                   ? onProcessCall
@@ -2237,7 +3030,8 @@ function CallDetail({
 
         {!loading
           && !error
-          && call.status === "completed"
+          && call.status
+            === "completed"
           && notes
           && (
             <>
@@ -2261,10 +3055,11 @@ function CallDetail({
               <ListSection
                 title="Decisions"
                 items={
-                  notes.decisions.map(
-                    (item) =>
-                      item.decision
-                  )
+                  notes.decisions
+                    .map(
+                      (item) =>
+                        item.decision
+                    )
                 }
               />
 
@@ -2277,14 +3072,16 @@ function CallDetail({
                   <ActionColumn
                     title="My next steps"
                     items={
-                      notes.my_action_items
+                      notes
+                        .my_action_items
                     }
                   />
 
                   <ActionColumn
                     title="Their next steps"
                     items={
-                      notes.their_action_items
+                      notes
+                        .their_action_items
                     }
                   />
                 </div>
@@ -2297,7 +3094,8 @@ function CallDetail({
                   <ListSection
                     title="Important dates"
                     items={
-                      notes.important_dates
+                      notes
+                        .important_dates
                     }
                   />
                 )}
@@ -2415,13 +3213,20 @@ function IncompleteCall({
   onProcess,
 }: {
   call: Call;
-  onContinue?: () => void;
-  onProcess?: () => void;
+
+  onContinue?:
+    () => void;
+
+  onProcess?:
+    () => void;
 }) {
   if (
-    call.status === "failed"
-    && call.failure_reason
-    === "recording_interrupted"
+    call.status
+      === "failed"
+    && (
+      call.failure_reason
+      === "recording_interrupted"
+    )
   ) {
     return (
       <div className="notice notice-error">
@@ -2440,7 +3245,9 @@ function IncompleteCall({
           <button
             type="button"
             className="notice-action"
-            onClick={onContinue}
+            onClick={
+              onContinue
+            }
           >
             Start again
           </button>
@@ -2450,9 +3257,12 @@ function IncompleteCall({
   }
 
   if (
-    call.status === "failed"
-    && call.failure_reason
-    === "recording_start_failed"
+    call.status
+      === "failed"
+    && (
+      call.failure_reason
+      === "recording_start_failed"
+    )
   ) {
     return (
       <div className="notice notice-error">
@@ -2469,7 +3279,9 @@ function IncompleteCall({
           <button
             type="button"
             className="notice-action"
-            onClick={onContinue}
+            onClick={
+              onContinue
+            }
           >
             Try recording again
           </button>
@@ -2479,9 +3291,12 @@ function IncompleteCall({
   }
 
   if (
-    call.status === "failed"
-    && call.failure_reason
-    === "recording_finish_failed"
+    call.status
+      === "failed"
+    && (
+      call.failure_reason
+      === "recording_finish_failed"
+    )
   ) {
     return (
       <div className="notice notice-error">
@@ -2500,7 +3315,9 @@ function IncompleteCall({
           <button
             type="button"
             className="notice-action"
-            onClick={onContinue}
+            onClick={
+              onContinue
+            }
           >
             Start again
           </button>
@@ -2510,9 +3327,12 @@ function IncompleteCall({
   }
 
   if (
-    call.status === "failed"
-    && call.failure_reason
-    === "processing_failed"
+    call.status
+      === "failed"
+    && (
+      call.failure_reason
+      === "processing_failed"
+    )
   ) {
     return (
       <div className="notice notice-error">
@@ -2530,7 +3350,9 @@ function IncompleteCall({
           <button
             type="button"
             className="notice-action"
-            onClick={onProcess}
+            onClick={
+              onProcess
+            }
           >
             Try processing again
           </button>
@@ -2539,16 +3361,21 @@ function IncompleteCall({
     );
   }
 
-  const copy: Record<
+  const copy:
+  Record<
     Call["status"],
     {
-      title: string;
-      message: string;
+      title:
+        string;
+
+      message:
+        string;
     }
   > = {
     created: {
       title:
         "This call hasn't started yet.",
+
       message:
         "You can start recording "
         + "whenever you're ready.",
@@ -2557,6 +3384,7 @@ function IncompleteCall({
     recording: {
       title:
         "This call is recording.",
+
       message:
         "Return to the active recording "
         + "session to finish it.",
@@ -2565,6 +3393,7 @@ function IncompleteCall({
     paused: {
       title:
         "This call is paused.",
+
       message:
         "Resume the recording "
         + "when you're ready.",
@@ -2573,6 +3402,7 @@ function IncompleteCall({
     processing: {
       title:
         "Your recording is ready.",
+
       message:
         "Process it to create the "
         + "transcript and call notes.",
@@ -2581,12 +3411,15 @@ function IncompleteCall({
     completed: {
       title:
         "This call is complete.",
-      message: "",
+
+      message:
+        "",
     },
 
     failed: {
       title:
         "This call didn't finish.",
+
       message:
         "You can try again.",
     },
@@ -2656,8 +3489,15 @@ function ListSection({
 
       <ul className="note-list">
         {items.map(
-          (item, index) => (
-            <li key={index}>
+          (
+            item,
+            index
+          ) => (
+            <li
+              key={
+                index
+              }
+            >
               {item}
             </li>
           )
@@ -2673,9 +3513,11 @@ function ActionColumn({
   items,
 }: {
   title: string;
+
   items: {
     task: string;
-    deadline: string | null;
+    deadline:
+      string | null;
   }[];
 }) {
   return (
@@ -2684,30 +3526,38 @@ function ActionColumn({
         {title}
       </h3>
 
-      {items.length === 0 ? (
-        <p className="muted">
-          Nothing assigned.
-        </p>
+      {items.length
+        === 0 ? (
+          <p className="muted">
+            Nothing assigned.
+          </p>
 
-      ) : (
-        <ul>
-          {items.map(
-            (item, index) => (
-              <li key={index}>
-                <span>
-                  {item.task}
-                </span>
+        ) : (
+          <ul>
+            {items.map(
+              (
+                item,
+                index
+              ) => (
+                <li
+                  key={
+                    index
+                  }
+                >
+                  <span>
+                    {item.task}
+                  </span>
 
-                {item.deadline && (
-                  <small>
-                    {item.deadline}
-                  </small>
-                )}
-              </li>
-            )
-          )}
-        </ul>
-      )}
+                  {item.deadline && (
+                    <small>
+                      {item.deadline}
+                    </small>
+                  )}
+                </li>
+              )
+            )}
+          </ul>
+        )}
     </div>
   );
 }
@@ -2718,7 +3568,9 @@ function TopBar({
   onToggleTheme,
 }: {
   theme: Theme;
-  onToggleTheme: () => void;
+
+  onToggleTheme:
+    () => void;
 }) {
   return (
     <header className="topbar">
@@ -2741,8 +3593,14 @@ function TopBar({
           }
           aria-label={
             theme === "dark"
-              ? "Switch to light mode"
-              : "Switch to dark mode"
+              ? (
+                "Switch to "
+                + "light mode"
+              )
+              : (
+                "Switch to "
+                + "dark mode"
+              )
           }
           title={
             theme === "dark"
@@ -2756,7 +3614,7 @@ function TopBar({
         </button>
 
         <span className="version">
-          V0.2
+          V0.3
         </span>
       </div>
     </header>

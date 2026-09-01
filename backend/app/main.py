@@ -3,8 +3,10 @@ import json
 from fastapi import (
     FastAPI,
     HTTPException,
+    Query,
     status,
 )
+
 from fastapi.middleware.cors import (
     CORSMiddleware,
 )
@@ -14,12 +16,15 @@ from backend.app.models import (
     CallStatus,
     CreateCallRequest,
 )
+
 from backend.app.processing_service import (
     CallProcessingService,
 )
+
 from backend.app.recorder_manager import (
     RecorderManager,
 )
+
 from backend.app.repository import (
     CallRepository,
 )
@@ -31,8 +36,9 @@ app = FastAPI(
         "Backend API for "
         "TCA — The Call Assistant"
     ),
-    version="0.2.0",
+    version="0.3.0",
 )
+
 
 app.add_middleware(
     CORSMiddleware,
@@ -70,8 +76,11 @@ def recover_stale_call(
     }:
         return call
 
-    if recorder_manager.is_recording(
-        call.id
+    if (
+        recorder_manager
+        .is_recording(
+            call.id
+        )
     ):
         return call
 
@@ -107,7 +116,7 @@ def health_check():
     return {
         "status": "ok",
         "service": "TCA API",
-        "version": "0.2.0",
+        "version": "0.3.0",
     }
 
 
@@ -121,8 +130,10 @@ def health_check():
 def create_call(
     request: CreateCallRequest,
 ):
-    return call_repository.create(
-        title=request.title
+    return (
+        call_repository.create(
+            title=request.title
+        )
     )
 
 
@@ -141,6 +152,41 @@ def list_calls():
         )
         for call in calls
     ]
+
+
+@app.get(
+    "/calls/search",
+)
+def search_calls(
+    q: str = Query(
+        default="",
+        max_length=200,
+    ),
+):
+    query = (
+        q.strip()
+    )
+
+    if not query:
+        return {
+            "query": "",
+            "count": 0,
+            "results": [],
+        }
+
+    results = (
+        call_repository.search(
+            query
+        )
+    )
+
+    return {
+        "query": query,
+        "count": len(
+            results
+        ),
+        "results": results,
+    }
 
 
 @app.get(
@@ -168,8 +214,11 @@ def delete_call(
         call_id
     )
 
-    if recorder_manager.is_recording(
-        call_id
+    if (
+        recorder_manager
+        .is_recording(
+            call_id
+        )
     ):
         raise HTTPException(
             status_code=409,
@@ -272,7 +321,8 @@ def start_call_recording(
         )
 
     call_directory = (
-        call_repository.get_directory(
+        call_repository
+        .get_directory(
             call_id
         )
     )
@@ -303,8 +353,11 @@ def start_call_recording(
             ),
         )
 
-    if recorder_manager.is_recording(
-        call_id
+    if (
+        recorder_manager
+        .is_recording(
+            call_id
+        )
     ):
         raise HTTPException(
             status_code=409,
@@ -379,8 +432,11 @@ def pause_call_recording(
             ),
         )
 
-    if not recorder_manager.is_recording(
-        call_id
+    if not (
+        recorder_manager
+        .is_recording(
+            call_id
+        )
     ):
         call.status = (
             CallStatus.FAILED
@@ -450,8 +506,11 @@ def resume_call_recording(
             ),
         )
 
-    if not recorder_manager.is_recording(
-        call_id
+    if not (
+        recorder_manager
+        .is_recording(
+            call_id
+        )
     ):
         call.status = (
             CallStatus.FAILED
@@ -520,8 +579,11 @@ def finish_call_recording(
             ),
         )
 
-    if not recorder_manager.is_recording(
-        call_id
+    if not (
+        recorder_manager
+        .is_recording(
+            call_id
+        )
     ):
         call.status = (
             CallStatus.FAILED
@@ -629,17 +691,20 @@ def get_recording_status(
         "call_id": call.id,
         "status": call.status,
         "is_recording": (
-            recorder_manager.is_recording(
+            recorder_manager
+            .is_recording(
                 call_id
             )
         ),
         "is_paused": (
-            recorder_manager.is_paused(
+            recorder_manager
+            .is_paused(
                 call_id
             )
         ),
         "elapsed_seconds": (
-            recorder_manager.elapsed_seconds(
+            recorder_manager
+            .elapsed_seconds(
                 call_id
             )
         ),
@@ -660,7 +725,8 @@ def process_call(
     )
 
     call_directory = (
-        call_repository.get_directory(
+        call_repository
+        .get_directory(
             call_id
         )
     )
@@ -738,7 +804,9 @@ def process_call(
 
         raise HTTPException(
             status_code=500,
-            detail=str(error),
+            detail=str(
+                error
+            ),
         ) from error
 
 
@@ -753,7 +821,8 @@ def get_call_transcript(
     )
 
     call_directory = (
-        call_repository.get_directory(
+        call_repository
+        .get_directory(
             call_id
         )
     )
@@ -763,7 +832,9 @@ def get_call_transcript(
         / "combined_transcript.txt"
     )
 
-    if not transcript_file.exists():
+    if (
+        not transcript_file.exists()
+    ):
         raise HTTPException(
             status_code=404,
             detail=(
@@ -774,7 +845,8 @@ def get_call_transcript(
     return {
         "call_id": call_id,
         "transcript": (
-            transcript_file.read_text(
+            transcript_file
+            .read_text(
                 encoding="utf-8"
             )
         ),
@@ -792,7 +864,8 @@ def get_call_notes(
     )
 
     call_directory = (
-        call_repository.get_directory(
+        call_repository
+        .get_directory(
             call_id
         )
     )
@@ -802,7 +875,9 @@ def get_call_notes(
         / "notes.json"
     )
 
-    if not notes_file.exists():
+    if (
+        not notes_file.exists()
+    ):
         raise HTTPException(
             status_code=404,
             detail=(
@@ -825,8 +900,10 @@ def get_call_notes(
 def require_call(
     call_id: str,
 ) -> Call:
-    call = call_repository.get(
-        call_id
+    call = (
+        call_repository.get(
+            call_id
+        )
     )
 
     if call is None:

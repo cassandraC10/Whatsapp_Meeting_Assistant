@@ -1,6 +1,7 @@
 const API_BASE_URL =
   "http://127.0.0.1:8000";
 
+
 export type CallStatus =
   | "created"
   | "recording"
@@ -8,6 +9,7 @@ export type CallStatus =
   | "processing"
   | "completed"
   | "failed";
+
 
 export interface Call {
   id: string;
@@ -18,14 +20,17 @@ export interface Call {
   failure_reason: string | null;
 }
 
+
 export interface ActionItem {
   task: string;
   deadline: string | null;
 }
 
+
 export interface Decision {
   decision: string;
 }
+
 
 export interface CallNotes {
   title: string;
@@ -38,15 +43,18 @@ export interface CallNotes {
   follow_up: string | null;
 }
 
+
 export interface NotesResponse {
   call: Call;
   notes: CallNotes;
 }
 
+
 export interface TranscriptResponse {
   call_id: string;
   transcript: string;
 }
+
 
 export interface RecordingStatusResponse {
   call_id: string;
@@ -56,6 +64,7 @@ export interface RecordingStatusResponse {
   elapsed_seconds: number;
   failure_reason: string | null;
 }
+
 
 export interface FinishRecordingResponse {
   call: Call;
@@ -68,9 +77,24 @@ export interface FinishRecordingResponse {
   };
 }
 
+
 export interface DeleteCallResponse {
   status: "deleted";
   call_id: string;
+}
+
+
+export interface SearchResult {
+  call: Call;
+  snippet: string;
+  matched_in: string[];
+}
+
+
+export interface SearchCallsResponse {
+  query: string;
+  count: number;
+  results: SearchResult[];
 }
 
 
@@ -117,6 +141,30 @@ Promise<Call[]> {
 }
 
 
+export function searchCalls(
+  query: string
+): Promise<SearchCallsResponse> {
+  const cleanQuery =
+    query.trim();
+
+  if (!cleanQuery) {
+    return Promise.resolve({
+      query: "",
+      count: 0,
+      results: [],
+    });
+  }
+
+  return request<SearchCallsResponse>(
+    `/calls/search?q=${
+      encodeURIComponent(
+        cleanQuery
+      )
+    }`
+  );
+}
+
+
 export function getCall(
   callId: string
 ): Promise<Call> {
@@ -141,7 +189,8 @@ export function createCall(
 
       body: JSON.stringify({
         title:
-          title.trim() || null,
+          title.trim()
+          || null,
       }),
     }
   );
