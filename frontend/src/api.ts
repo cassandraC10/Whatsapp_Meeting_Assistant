@@ -426,3 +426,45 @@ export function deleteCallTask(
     }
   );
 }
+
+
+export interface Person {
+  id: string;
+  name: string;
+  conversation_count: number;
+}
+
+export interface PersonTask {
+  id: string;
+  call_id: string;
+  task: string;
+  deadline: string | null;
+  completed: boolean;
+}
+
+export interface PersonDetail {
+  id: string;
+  name: string;
+  conversation_count: number;
+  open_next_steps: PersonTask[];
+  recent_decisions: string[];
+  conversations: Call[];
+}
+
+export interface PeopleResponse {
+  people: Person[];
+}
+
+export function getPeople(): Promise<PeopleResponse> {
+  return request<PeopleResponse>(
+    "/people"
+  );
+}
+
+export function getPerson(
+  personId: string
+): Promise<PersonDetail> {
+  return request<PersonDetail>(
+    `/people/${personId}`
+  );
+}

@@ -5,8 +5,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from uuid import NAMESPACE_URL, uuid4, uuid5
 
-from backend.app.models import Call, CallStatus, Task, TaskOwner
-
+from backend.app.models import (Call, CallStatus, Person, PersonDetail,
+                                PersonTask, Task, TaskOwner)
 
 BACKEND_ROOT = (
     Path(__file__)
@@ -554,6 +554,220 @@ class CallRepository:
                 )
 
         return tasks
+
+    def list_people(self) -> list[Person]:
+        people: dict[str, dict] = {}
+
+        for call in self.list_all():
+            for name in self._extract_people(call):
+                key = name.casefold()
+                entry = people.setdefault(
+                    key,
+                    {"id": str(uuid5(NAMESPACE_URL, f"tca-person:{key}")), "name": name, "calls": set()},
+                )
+                entry["calls"].add(call.id)
+
+        result = [
+            Person(
+                id=entry["id"],
+                name=entry["name"],
+                conversation_count=len(entry["calls"]),
+            )
+            for entry in people.values()
+        ]
+        result.sort(key=lambda person: (-person.conversation_count, person.name.casefold()))
+        return result
+
+    def get_person_detail(
+        self,
+        person_id: str,
+    ) -> PersonDetail | None:
+        matches: list[
+            tuple[Call, str]
+        ] = []
+
+        for call in self.list_all():
+            for name in self._extract_people(call):
+                candidate_id = str(
+                    uuid5(
+                        NAMESPACE_URL,
+                        f"tca-person:{name.casefold()}",
+                    )
+                )
+
+                if candidate_id == person_id:
+                    matches.append(
+                        (call, name)
+                    )
+                    break
+
+        if not matches:
+            return None
+
+        person_name = matches[0][1]
+
+        conversations = [
+            call
+            for call, _ in matches
+        ]
+
+        open_steps: list[
+            PersonTask
+        ] = []
+
+        decisions: list[
+            str
+        ] = []
+
+        for call in conversations:
+            tasks = self.get_tasks(
+                call.id
+            )
+
+            # Any open "their" task from a
+            # conversation associated with
+            # this person belongs in their
+            # People memory for now.
+            for task in tasks:
+                if (
+                    task.completed
+                    or task.owner
+                    != TaskOwner.THEM
+                ):
+                    continue
+
+                open_steps.append(
+                    PersonTask(
+                        id=task.id,
+                        call_id=task.call_id,
+                        task=task.task,
+                        deadline=task.deadline,
+                        completed=task.completed,
+                    )
+                )
+
+            notes_file = (
+                self._call_directory(
+                    call.id
+                )
+                / "notes.json"
+            )
+
+            if notes_file.exists():
+                try:
+                    notes = json.loads(
+                        notes_file.read_text(
+                            encoding="utf-8"
+                        )
+                    )
+                except (
+                    json.JSONDecodeError,
+                    OSError,
+                ):
+                    notes = {}
+
+                raw_decisions = notes.get(
+                    "decisions",
+                    [],
+                )
+
+                if isinstance(
+                    raw_decisions,
+                    list,
+                ):
+                    for item in raw_decisions:
+                        if isinstance(
+                            item,
+                            dict,
+                        ):
+                            value = str(
+                                item.get(
+                                    "decision",
+                                    "",
+                                )
+                                or ""
+                            ).strip()
+                        else:
+                            value = str(
+                                item or ""
+                            ).strip()
+
+                        if (
+                            value
+                            and value
+                            not in decisions
+                        ):
+                            decisions.append(
+                                value
+                            )
+
+        return PersonDetail(
+            id=person_id,
+            name=person_name,
+            conversation_count=len(
+                conversations
+            ),
+            open_next_steps=open_steps,
+            recent_decisions=decisions[:8],
+            conversations=conversations,
+        )
+
+    def _extract_people(self, call: Call) -> list[str]:
+        call_directory = self._call_directory(call.id)
+        texts = [call.title]
+
+        notes_file = call_directory / "notes.json"
+        if notes_file.exists():
+            try:
+                notes = json.loads(notes_file.read_text(encoding="utf-8"))
+            except (json.JSONDecodeError, OSError):
+                notes = {}
+            texts.extend(self._flatten_person_text(notes))
+
+        transcript_file = call_directory / "combined_transcript.txt"
+        if transcript_file.exists():
+            try:
+                texts.append(transcript_file.read_text(encoding="utf-8"))
+            except OSError:
+                pass
+
+        found: dict[str, str] = {}
+        patterns = [
+            r"\bwith\s+([A-Z][a-z]{1,30}(?:\s+[A-Z][a-z]{1,30})?)",
+            r"\b(?:thank you so much,|thanks,|hello,|hi,)\s*([A-Z][a-z]{1,30})\b",
+            r"\b([A-Z][a-z]{1,30})\s+(?:said|noted|will|agreed|highlighted|committed|mentioned)\b",
+            r"\b([A-Z][a-z]{1,30})\s+(?:is|was)\s+the\s+(?:one|person)\b",
+        ]
+        excluded = {
+            "Wednesday", "Thursday", "Friday", "Monday", "Tuesday", "Saturday", "Sunday",
+            "January", "February", "March", "April", "May", "June", "July", "August",
+            "September", "October", "November", "December", "Android", "WhatsApp", "TCA",
+            "Then", "They", "The", "This", "That", "These", "Those",
+        }
+        for text in texts:
+            for pattern in patterns:
+                for match in re.finditer(pattern, text):
+                    name = match.group(1).strip()
+                    if name in excluded or len(name) < 2:
+                        continue
+                    key = name.casefold()
+                    found.setdefault(key, name)
+        return list(found.values())
+
+    def _flatten_person_text(self, value) -> list[str]:
+        if isinstance(value, str):
+            return [value]
+        if isinstance(value, list):
+            result: list[str] = []
+            for item in value:
+                result.extend(self._flatten_person_text(item))
+            return result
+        if isinstance(value, dict):
+            result: list[str] = []
+            for item in value.values():
+                result.extend(self._flatten_person_text(item))
+            return result
+        return []
 
     def delete(
         self,

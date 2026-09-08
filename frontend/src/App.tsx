@@ -25,6 +25,8 @@ import {
   getCallTasks,
   updateCallTask,
   deleteCallTask,
+  getPeople,
+  getPerson,
 } from "./api";
 
 import type {
@@ -33,6 +35,8 @@ import type {
   CallNotes,
   SearchResult,
   Task,
+  Person,
+  PersonDetail,
 } from "./api";
 
 
@@ -42,7 +46,8 @@ type View =
   | "consent"
   | "recording"
   | "processing"
-  | "detail";
+  | "detail"
+  | "people";
 
 type Theme =
   | "light"
@@ -627,6 +632,41 @@ function App() {
   ] = useState("");
 
 
+  /*
+   * V3 PEOPLE MEMORY
+   */
+
+  const [
+    people,
+    setPeople,
+  ] = useState<Person[]>([]);
+
+  const [
+    peopleLoading,
+    setPeopleLoading,
+  ] = useState(false);
+
+  const [
+    peopleError,
+    setPeopleError,
+  ] = useState("");
+
+  const [
+    selectedPerson,
+    setSelectedPerson,
+  ] = useState<PersonDetail | null>(null);
+
+  const [
+    personLoading,
+    setPersonLoading,
+  ] = useState(false);
+
+  const [
+    personError,
+    setPersonError,
+  ] = useState("");
+
+
   useEffect(() => {
     document
       .documentElement
@@ -646,7 +686,56 @@ function App() {
 
   useEffect(() => {
     loadCalls();
+
+    if (
+      window.location.hash
+      === "#people"
+    ) {
+      setView(
+        "people"
+      );
+    }
   }, []);
+
+
+  useEffect(() => {
+    function handleHashChange() {
+      if (
+        window.location.hash
+        === "#people"
+      ) {
+        setView(
+          "people"
+        );
+
+        void loadPeople();
+
+        return;
+      }
+
+      if (
+        view === "people"
+      ) {
+        setView(
+          "calls"
+        );
+      }
+    }
+
+    window.addEventListener(
+      "hashchange",
+      handleHashChange
+    );
+
+    return () => {
+      window.removeEventListener(
+        "hashchange",
+        handleHashChange
+      );
+    };
+  }, [
+    view,
+  ]);
 
 
   useEffect(() => {
@@ -658,9 +747,13 @@ function App() {
         []
       );
 
-      setSearchError("");
+      setSearchError(
+        ""
+      );
 
-      setSearching(false);
+      setSearching(
+        false
+      );
 
       return;
     }
@@ -910,12 +1003,18 @@ function App() {
     setAskResult(null);
 
     if (call) {
-      setSelectedCall(call);
+      setSelectedCall(
+        call
+      );
     } else {
-      setSelectedCall(null);
+      setSelectedCall(
+        null
+      );
     }
 
-    setView("ask");
+    setView(
+      "ask"
+    );
   }
 
 
@@ -951,7 +1050,9 @@ function App() {
           selectedCall?.id
         );
 
-      setAskResult(result);
+      setAskResult(
+        result
+      );
 
     } catch (error) {
       setAskError(
@@ -964,7 +1065,9 @@ function App() {
       );
 
     } finally {
-      setAsking(false);
+      setAsking(
+        false
+      );
     }
   }
 
@@ -979,13 +1082,18 @@ function App() {
       );
 
     if (call) {
-      await openCall(call);
+      await openCall(
+        call
+      );
+
       return;
     }
 
     try {
       const fetchedCall =
-        await getCall(callId);
+        await getCall(
+          callId
+        );
 
       setCalls(
         (current) => [
@@ -997,7 +1105,9 @@ function App() {
         ]
       );
 
-      await openCall(fetchedCall);
+      await openCall(
+        fetchedCall
+      );
 
     } catch (error) {
       setAskError(
@@ -1153,8 +1263,13 @@ function App() {
     );
 
     try {
-      setTasksLoading(true);
-      setTasksError("");
+      setTasksLoading(
+        true
+      );
+
+      setTasksError(
+        ""
+      );
 
       const [
         updatedCall,
@@ -1230,7 +1345,10 @@ function App() {
       );
 
     } finally {
-      setTasksLoading(false);
+      setTasksLoading(
+        false
+      );
+
       setLoadingDetail(
         false
       );
@@ -1246,36 +1364,52 @@ function App() {
       completed?: boolean;
     }
   ) {
-    if (!selectedCall) {
+    if (
+      !selectedCall
+    ) {
       return;
     }
 
-    setTaskBusyId(taskId);
-    setTasksError("");
+    setTaskBusyId(
+      taskId
+    );
+
+    setTasksError(
+      ""
+    );
 
     try {
-      const updatedTask = await updateCallTask(
-        selectedCall.id,
-        taskId,
-        changes
+      const updatedTask =
+        await updateCallTask(
+          selectedCall.id,
+          taskId,
+          changes
+        );
+
+      setSelectedTasks(
+        (current) =>
+          current.map(
+            (task) =>
+              task.id
+                === updatedTask.id
+                ? updatedTask
+                : task
+          )
       );
 
-      setSelectedTasks((current) =>
-        current.map((task) =>
-          task.id === updatedTask.id
-            ? updatedTask
-            : task
-        )
-      );
     } catch (error) {
       setTasksError(
         error instanceof Error
           ? error.message
           : "Could not update that task."
       );
+
       throw error;
+
     } finally {
-      setTaskBusyId(null);
+      setTaskBusyId(
+        null
+      );
     }
   }
 
@@ -1283,12 +1417,19 @@ function App() {
   async function removeTask(
     taskId: string
   ) {
-    if (!selectedCall) {
+    if (
+      !selectedCall
+    ) {
       return;
     }
 
-    setTaskBusyId(taskId);
-    setTasksError("");
+    setTaskBusyId(
+      taskId
+    );
+
+    setTasksError(
+      ""
+    );
 
     try {
       await deleteCallTask(
@@ -1296,18 +1437,27 @@ function App() {
         taskId
       );
 
-      setSelectedTasks((current) =>
-        current.filter((task) => task.id !== taskId)
+      setSelectedTasks(
+        (current) =>
+          current.filter(
+            (task) =>
+              task.id !== taskId
+          )
       );
+
     } catch (error) {
       setTasksError(
         error instanceof Error
           ? error.message
           : "Could not delete that task."
       );
+
       throw error;
+
     } finally {
-      setTaskBusyId(null);
+      setTaskBusyId(
+        null
+      );
     }
   }
 
@@ -1327,9 +1477,17 @@ function App() {
       null
     );
 
-    setSelectedTasks([]);
-    setTasksError("");
-    setTasksLoading(false);
+    setSelectedTasks(
+      []
+    );
+
+    setTasksError(
+      ""
+    );
+
+    setTasksLoading(
+      false
+    );
 
     setTranscriptOpen(
       false
@@ -1357,6 +1515,127 @@ function App() {
     setView(
       "detail"
     );
+  }
+
+
+  async function loadPeople() {
+    setPeopleLoading(
+      true
+    );
+
+    setPeopleError(
+      ""
+    );
+
+    try {
+      const result =
+        await getPeople();
+
+      setPeople(
+        result.people
+      );
+
+    } catch (error) {
+      setPeopleError(
+        error instanceof Error
+          ? error.message
+          : "Could not load people."
+      );
+
+    } finally {
+      setPeopleLoading(
+        false
+      );
+    }
+  }
+
+
+  async function openPerson(
+    person: Person
+  ) {
+    setSelectedPerson(
+      null
+    );
+
+    setPersonError(
+      ""
+    );
+
+    setPersonLoading(
+      true
+    );
+
+    setView(
+      "people"
+    );
+
+    try {
+      const detail =
+        await getPerson(
+          person.id
+        );
+
+      setSelectedPerson(
+        detail
+      );
+
+    } catch (error) {
+      setPersonError(
+        error instanceof Error
+          ? error.message
+          : "Could not load this person."
+      );
+
+    } finally {
+      setPersonLoading(
+        false
+      );
+    }
+  }
+
+
+  function openPeopleView() {
+    setSelectedPerson(
+      null
+    );
+
+    setPersonError(
+      ""
+    );
+
+    if (
+      window.location.hash
+        !== "#people"
+    ) {
+      window.location.hash =
+        "people";
+    } else {
+      setView(
+        "people"
+      );
+
+      void loadPeople();
+    }
+  }
+
+
+  function returnFromPeople() {
+    window.history.replaceState(
+      null,
+      "",
+      window.location.pathname
+      + window.location.search
+    );
+
+    setSelectedPerson(
+      null
+    );
+
+    setView(
+      "calls"
+    );
+
+    void loadCalls();
   }
 
 
@@ -1409,11 +1688,19 @@ function App() {
       0
     );
 
-    setAskQuestion("");
-    setAskResult(null);
-    setAskError("");
+    setAskQuestion(
+      ""
+    );
 
-    loadCalls();
+    setAskResult(
+      null
+    );
+
+    setAskError(
+      ""
+    );
+
+    void loadCalls();
   }
 
 
@@ -1973,17 +2260,91 @@ function App() {
   }
 
 
+  /*
+   * PEOPLE
+   *
+   * Memory/navigation screens get
+   * the full V3 navigation.
+   *
+   * Recording / consent / processing
+   * intentionally keep the protected
+   * V2 flow navigation.
+   */
+
+  if (
+    view === "people"
+  ) {
+    return (
+      <PeopleView
+        theme={theme}
+        people={people}
+        loading={peopleLoading}
+        error={
+          peopleError
+          || personError
+        }
+        selectedPerson={
+          selectedPerson
+        }
+        personLoading={
+          personLoading
+        }
+        onOpenPerson={
+          openPerson
+        }
+        onClosePerson={() =>
+          setSelectedPerson(
+            null
+          )
+        }
+        onBack={
+          returnFromPeople
+        }
+        onOpenCall={
+          openCall
+        }
+        onCalls={
+          returnToCalls
+        }
+        onAsk={() =>
+          openAskView()
+        }
+        onToggleTheme={
+          toggleTheme
+        }
+        onRefresh={
+          loadPeople
+        }
+      />
+    );
+  }
+
+
+  /*
+   * ASK TCA
+   */
+
   if (
     view === "ask"
   ) {
     return (
       <AskTcaView
         theme={theme}
-        question={askQuestion}
-        result={askResult}
-        asking={asking}
-        error={askError}
-        selectedCall={selectedCall}
+        question={
+          askQuestion
+        }
+        result={
+          askResult
+        }
+        asking={
+          asking
+        }
+        error={
+          askError
+        }
+        selectedCall={
+          selectedCall
+        }
         onQuestionChange={
           setAskQuestion
         }
@@ -1996,6 +2357,12 @@ function App() {
         onBack={
           returnToCalls
         }
+        onCalls={
+          returnToCalls
+        }
+        onPeople={
+          openPeopleView
+        }
         onToggleTheme={
           toggleTheme
         }
@@ -2007,14 +2374,22 @@ function App() {
   }
 
 
+  /*
+   * CONSENT
+   */
+
   if (
     view === "consent"
     && selectedCall
   ) {
     return (
       <ConsentView
-        call={selectedCall}
-        theme={theme}
+        call={
+          selectedCall
+        }
+        theme={
+          theme
+        }
         confirmed={
           consentConfirmed
         }
@@ -2041,14 +2416,22 @@ function App() {
   }
 
 
+  /*
+   * RECORDING
+   */
+
   if (
     view === "recording"
     && selectedCall
   ) {
     return (
       <RecordingView
-        call={selectedCall}
-        theme={theme}
+        call={
+          selectedCall
+        }
+        theme={
+          theme
+        }
         elapsedSeconds={
           elapsedSeconds
         }
@@ -2075,14 +2458,22 @@ function App() {
   }
 
 
+  /*
+   * PROCESSING
+   */
+
   if (
     view === "processing"
     && selectedCall
   ) {
     return (
       <ProcessingView
-        call={selectedCall}
-        theme={theme}
+        call={
+          selectedCall
+        }
+        theme={
+          theme
+        }
         seconds={
           processingSeconds
         }
@@ -2108,14 +2499,22 @@ function App() {
   }
 
 
+  /*
+   * CALL DETAIL
+   */
+
   if (
     view === "detail"
     && selectedCall
   ) {
     return (
       <CallDetail
-        call={selectedCall}
-        notes={selectedNotes}
+        call={
+          selectedCall
+        }
+        notes={
+          selectedNotes
+        }
         transcript={
           selectedTranscript
         }
@@ -2128,19 +2527,33 @@ function App() {
         transcriptOpen={
           transcriptOpen
         }
-        theme={theme}
+        theme={
+          theme
+        }
         actionMessage={
           actionMessage
         }
         deleting={
           deletingCall
         }
-        tasks={selectedTasks}
-        tasksLoading={tasksLoading}
-        tasksError={tasksError}
-        taskBusyId={taskBusyId}
-        onUpdateTask={updateTaskState}
-        onDeleteTask={removeTask}
+        tasks={
+          selectedTasks
+        }
+        tasksLoading={
+          tasksLoading
+        }
+        tasksError={
+          tasksError
+        }
+        taskBusyId={
+          taskBusyId
+        }
+        onUpdateTask={
+          updateTaskState
+        }
+        onDeleteTask={
+          removeTask
+        }
         onToggleTheme={
           toggleTheme
         }
@@ -2157,6 +2570,15 @@ function App() {
         }
         onBack={
           returnToCalls
+        }
+        onCalls={
+          returnToCalls
+        }
+        onAsk={() =>
+          openAskView()
+        }
+        onPeople={
+          openPeopleView
         }
         onContinueCreatedCall={() =>
           continueCreatedCall(
@@ -2185,12 +2607,27 @@ function App() {
   }
 
 
+  /*
+   * CALLS
+   */
+
   return (
     <main className="app-shell">
       <TopBar
-        theme={theme}
+        theme={
+          theme
+        }
         onToggleTheme={
           toggleTheme
+        }
+        onCalls={
+          returnToCalls
+        }
+        onAsk={() =>
+          openAskView()
+        }
+        onPeople={
+          openPeopleView
         }
       />
 
@@ -2270,57 +2707,57 @@ function App() {
 
             <form
               className="call-composer"
-            onSubmit={
-              handleSubmit
-            }
-          >
-            <div className="composer-copy">
-              <span className="section-label">
-                New call
-              </span>
+              onSubmit={
+                handleSubmit
+              }
+            >
+              <div className="composer-copy">
+                <span className="section-label">
+                  New call
+                </span>
 
-              <label
-                htmlFor="call-title"
-              >
-                What is this call about?
-              </label>
-            </div>
+                <label
+                  htmlFor="call-title"
+                >
+                  What is this call about?
+                </label>
+              </div>
 
-            <div className="composer-row">
-              <input
-                id="call-title"
-                value={
-                  title
-                }
-                onChange={
-                  (event) =>
-                    setTitle(
-                      event
-                        .target
-                        .value
-                    )
-                }
-                placeholder={
-                  "Product feedback "
-                  + "with Jane"
-                }
-                maxLength={
-                  120
-                }
-              />
+              <div className="composer-row">
+                <input
+                  id="call-title"
+                  value={
+                    title
+                  }
+                  onChange={
+                    (event) =>
+                      setTitle(
+                        event
+                          .target
+                          .value
+                      )
+                  }
+                  placeholder={
+                    "Product feedback "
+                    + "with Jane"
+                  }
+                  maxLength={
+                    120
+                  }
+                />
 
-              <button
-                className="primary-button"
-                type="submit"
-                disabled={
-                  creating
-                }
-              >
-                {creating
-                  ? "Starting…"
-                  : "Start call"}
-              </button>
-            </div>
+                <button
+                  className="primary-button"
+                  type="submit"
+                  disabled={
+                    creating
+                  }
+                >
+                  {creating
+                    ? "Starting…"
+                    : "Start call"}
+                </button>
+              </div>
             </form>
           </>
         )}
@@ -2442,7 +2879,9 @@ function AskTcaEntry({
       <button
         type="button"
         className="secondary-button"
-        onClick={onOpen}
+        onClick={
+          onOpen
+        }
       >
         Ask TCA
       </button>
@@ -2462,6 +2901,8 @@ function AskTcaView({
   onSubmit,
   onClear,
   onBack,
+  onCalls,
+  onPeople,
   onToggleTheme,
   onOpenSource,
 }: {
@@ -2484,6 +2925,12 @@ function AskTcaView({
   onBack:
     () => void;
 
+  onCalls:
+    () => void;
+
+  onPeople:
+    () => void;
+
   onToggleTheme:
     () => void;
 
@@ -2491,20 +2938,35 @@ function AskTcaView({
     (callId: string) => void;
 }) {
   const scoped =
-    Boolean(selectedCall);
+    Boolean(
+      selectedCall
+    );
 
   return (
     <main className="app-shell">
       <TopBar
-        theme={theme}
-        onToggleTheme={onToggleTheme}
+        theme={
+          theme
+        }
+        onToggleTheme={
+          onToggleTheme
+        }
+        onCalls={
+          onCalls
+        }
+        onAsk={() => {}}
+        onPeople={
+          onPeople
+        }
       />
 
       <section className="ask-shell">
         <button
           type="button"
           className="back-button"
-          onClick={onBack}
+          onClick={
+            onBack
+          }
         >
           ← Calls
         </button>
@@ -2538,7 +3000,9 @@ function AskTcaView({
 
         <form
           className="ask-form"
-          onSubmit={onSubmit}
+          onSubmit={
+            onSubmit
+          }
         >
           <label
             htmlFor="ask-question"
@@ -2549,11 +3013,14 @@ function AskTcaView({
 
           <textarea
             id="ask-question"
-            value={question}
-            onChange={(event) =>
-              onQuestionChange(
-                event.target.value
-              )
+            value={
+              question
+            }
+            onChange={
+              (event) =>
+                onQuestionChange(
+                  event.target.value
+                )
             }
             placeholder={
               scoped
@@ -2583,8 +3050,12 @@ function AskTcaView({
                 <button
                   type="button"
                   className="secondary-button"
-                  onClick={onClear}
-                  disabled={asking}
+                  onClick={
+                    onClear
+                  }
+                  disabled={
+                    asking
+                  }
                 >
                   Clear
                 </button>
@@ -2612,7 +3083,9 @@ function AskTcaView({
               TCA couldn't answer that.
             </strong>
 
-            <p>{error}</p>
+            <p>
+              {error}
+            </p>
           </div>
         )}
 
@@ -2626,12 +3099,18 @@ function AskTcaView({
           </div>
         )}
 
-        {!asking && result && (
-          <AskAnswer
-            result={result}
-            onOpenSource={onOpenSource}
-          />
-        )}
+        {!asking
+          && result
+          && (
+            <AskAnswer
+              result={
+                result
+              }
+              onOpenSource={
+                onOpenSource
+              }
+            />
+          )}
       </section>
     </main>
   );
@@ -2661,7 +3140,9 @@ function AskAnswer({
       </div>
 
       <div className="ask-answer-body">
-        <p>{result.answer}</p>
+        <p>
+          {result.answer}
+        </p>
       </div>
 
       {result.sources.length > 0 && (
@@ -2682,7 +3163,9 @@ function AskAnswer({
                 <button
                   type="button"
                   className="ask-source"
-                  key={source.call_id}
+                  key={
+                    source.call_id
+                  }
                   onClick={() =>
                     onOpenSource(
                       source.call_id
@@ -2690,7 +3173,9 @@ function AskAnswer({
                   }
                 >
                   <div className="ask-source-main">
-                    <h3>{source.title}</h3>
+                    <h3>
+                      {source.title}
+                    </h3>
 
                     <div className="ask-source-meta">
                       {formatDate(
@@ -2716,7 +3201,8 @@ function AskAnswer({
       )}
 
       {result.sources.length === 0
-        && result.found_answer && (
+        && result.found_answer
+        && (
           <p className="ask-source-note">
             No source conversation was
             returned with this answer.
@@ -2781,7 +3267,6 @@ function SearchResultsView({
         )}
       </div>
 
-
       {error && (
         <div className="notice notice-error">
           <strong>
@@ -2794,7 +3279,6 @@ function SearchResultsView({
         </div>
       )}
 
-
       {!error
         && searching
         && (
@@ -2803,7 +3287,6 @@ function SearchResultsView({
             conversations…
           </p>
         )}
-
 
       {!error
         && !searching
@@ -2822,7 +3305,6 @@ function SearchResultsView({
             </p>
           </div>
         )}
-
 
       {!error
         && !searching
@@ -3022,7 +3504,9 @@ function ConsentView({
   return (
     <main className="app-shell">
       <TopBar
-        theme={theme}
+        theme={
+          theme
+        }
         onToggleTheme={
           onToggleTheme
         }
@@ -3172,7 +3656,9 @@ function RecordingView({
   return (
     <main className="app-shell">
       <TopBar
-        theme={theme}
+        theme={
+          theme
+        }
         onToggleTheme={
           onToggleTheme
         }
@@ -3341,7 +3827,9 @@ function ProcessingView({
   return (
     <main className="app-shell">
       <TopBar
-        theme={theme}
+        theme={
+          theme
+        }
         onToggleTheme={
           onToggleTheme
         }
@@ -3512,6 +4000,15 @@ interface CallDetailProps {
   onBack:
     () => void;
 
+  onCalls:
+    () => void;
+
+  onAsk:
+    () => void;
+
+  onPeople:
+    () => void;
+
   onContinueCreatedCall:
     () => void;
 
@@ -3552,6 +4049,9 @@ function CallDetail({
   onToggleTranscript,
   onAskAboutCall,
   onBack,
+  onCalls,
+  onAsk,
+  onPeople,
   onContinueCreatedCall,
   onProcessCall,
   onCopy,
@@ -3570,9 +4070,20 @@ function CallDetail({
   return (
     <main className="app-shell">
       <TopBar
-        theme={theme}
+        theme={
+          theme
+        }
         onToggleTheme={
           onToggleTheme
+        }
+        onCalls={
+          onCalls
+        }
+        onAsk={
+          onAsk
+        }
+        onPeople={
+          onPeople
         }
       />
 
@@ -3646,7 +4157,9 @@ function CallDetail({
             !== "completed"
           && (
             <IncompleteCall
-              call={call}
+              call={
+                call
+              }
 
               onContinue={
                 call.status
@@ -3734,26 +4247,54 @@ function CallDetail({
                 <div className="next-steps">
                   <ActionColumn
                     title="My next steps"
-                    items={tasks.filter(
-                      (task) => task.owner === "me"
-                    )}
-                    loading={tasksLoading}
-                    error={tasksError}
-                    busyId={taskBusyId}
-                    onUpdateTask={onUpdateTask}
-                    onDeleteTask={onDeleteTask}
+                    items={
+                      tasks.filter(
+                        (task) =>
+                          task.owner
+                          === "me"
+                      )
+                    }
+                    loading={
+                      tasksLoading
+                    }
+                    error={
+                      tasksError
+                    }
+                    busyId={
+                      taskBusyId
+                    }
+                    onUpdateTask={
+                      onUpdateTask
+                    }
+                    onDeleteTask={
+                      onDeleteTask
+                    }
                   />
 
                   <ActionColumn
                     title="Their next steps"
-                    items={tasks.filter(
-                      (task) => task.owner === "them"
-                    )}
-                    loading={tasksLoading}
-                    error={tasksError}
-                    busyId={taskBusyId}
-                    onUpdateTask={onUpdateTask}
-                    onDeleteTask={onDeleteTask}
+                    items={
+                      tasks.filter(
+                        (task) =>
+                          task.owner
+                          === "them"
+                      )
+                    }
+                    loading={
+                      tasksLoading
+                    }
+                    error={
+                      tasksError
+                    }
+                    busyId={
+                      taskBusyId
+                    }
+                    onUpdateTask={
+                      onUpdateTask
+                    }
+                    onDeleteTask={
+                      onDeleteTask
+                    }
                   />
                 </div>
               </section>
@@ -4216,6 +4757,7 @@ function ActionColumn({
   loading: boolean;
   error: string;
   busyId: string | null;
+
   onUpdateTask: (
     taskId: string,
     changes: {
@@ -4224,74 +4766,138 @@ function ActionColumn({
       completed?: boolean;
     }
   ) => Promise<void>;
+
   onDeleteTask: (
     taskId: string
   ) => Promise<void>;
 }) {
-  const [editingId, setEditingId] =
-    useState<string | null>(null);
+  const [
+    editingId,
+    setEditingId,
+  ] =
+    useState<string | null>(
+      null
+    );
 
-  const [draftTask, setDraftTask] =
+  const [
+    draftTask,
+    setDraftTask,
+  ] =
     useState("");
 
-  const [draftDeadline, setDraftDeadline] =
+  const [
+    draftDeadline,
+    setDraftDeadline,
+  ] =
     useState("");
 
-  function beginEdit(item: Task) {
-    setEditingId(item.id);
-    setDraftTask(item.task);
-    setDraftDeadline(item.deadline || "");
+  function beginEdit(
+    item: Task
+  ) {
+    setEditingId(
+      item.id
+    );
+
+    setDraftTask(
+      item.task
+    );
+
+    setDraftDeadline(
+      item.deadline
+      || ""
+    );
   }
 
   function cancelEdit() {
-    setEditingId(null);
-    setDraftTask("");
-    setDraftDeadline("");
-  }
-
-  async function saveEdit(item: Task) {
-    const cleanTask = draftTask.trim();
-
-    if (!cleanTask) {
-      return;
-    }
-
-    try {
-      await onUpdateTask(item.id, {
-        task: cleanTask,
-        deadline: draftDeadline.trim() || null,
-      });
-      cancelEdit();
-    } catch {
-      // Parent displays the error.
-    }
-  }
-
-  async function toggleCompleted(item: Task) {
-    try {
-      await onUpdateTask(item.id, {
-        completed: !item.completed,
-      });
-    } catch {
-      // Parent displays the error.
-    }
-  }
-
-  async function handleDelete(item: Task) {
-    const confirmed = window.confirm(
-      `Delete this next step?\n\n${item.task}`
+    setEditingId(
+      null
     );
 
-    if (!confirmed) {
+    setDraftTask(
+      ""
+    );
+
+    setDraftDeadline(
+      ""
+    );
+  }
+
+  async function saveEdit(
+    item: Task
+  ) {
+    const cleanTask =
+      draftTask.trim();
+
+    if (
+      !cleanTask
+    ) {
       return;
     }
 
     try {
-      await onDeleteTask(item.id);
+      await onUpdateTask(
+        item.id,
+        {
+          task:
+            cleanTask,
 
-      if (editingId === item.id) {
+          deadline:
+            draftDeadline
+              .trim()
+              || null,
+        }
+      );
+
+      cancelEdit();
+
+    } catch {
+      // Parent displays the error.
+    }
+  }
+
+  async function toggleCompleted(
+    item: Task
+  ) {
+    try {
+      await onUpdateTask(
+        item.id,
+        {
+          completed:
+            !item.completed,
+        }
+      );
+
+    } catch {
+      // Parent displays the error.
+    }
+  }
+
+  async function handleDelete(
+    item: Task
+  ) {
+    const confirmed =
+      window.confirm(
+        `Delete this next step?\n\n${item.task}`
+      );
+
+    if (
+      !confirmed
+    ) {
+      return;
+    }
+
+    try {
+      await onDeleteTask(
+        item.id
+      );
+
+      if (
+        editingId
+          === item.id
+      ) {
         cancelEdit();
       }
+
     } catch {
       // Parent displays the error.
     }
@@ -4307,159 +4913,646 @@ function ActionColumn({
         <p className="muted">
           Loading next steps…
         </p>
+
       ) : items.length === 0 ? (
         <p className="muted">
           Nothing assigned.
         </p>
+
       ) : (
         <ul className="task-list">
-          {items.map((item) => {
-            const busy = busyId === item.id;
-            const editing = editingId === item.id;
+          {items.map(
+            (item) => {
+              const busy =
+                busyId
+                  === item.id;
 
-            return (
-              <li
-                className={
-                  `task-item${
-                    item.completed
-                      ? " task-completed"
-                      : ""
-                  }`
-                }
-                key={item.id}
-              >
-                {editing ? (
-                  <div className="task-edit-form">
-                    <label>
-                      <span>Task</span>
-                      <input
-                        value={draftTask}
-                        onChange={(event) =>
-                          setDraftTask(event.target.value)
-                        }
-                        maxLength={500}
-                        disabled={busy}
-                      />
-                    </label>
+              const editing =
+                editingId
+                  === item.id;
 
-                    <label>
-                      <span>Deadline</span>
-                      <input
-                        value={draftDeadline}
-                        onChange={(event) =>
-                          setDraftDeadline(event.target.value)
-                        }
-                        maxLength={200}
-                        placeholder="Optional"
-                        disabled={busy}
-                      />
-                    </label>
-
-                    <div className="task-edit-actions">
-                      <button
-                        type="button"
-                        className="task-text-button"
-                        onClick={() => saveEdit(item)}
-                        disabled={busy || !draftTask.trim()}
-                      >
-                        {busy ? "Saving…" : "Save"}
-                      </button>
-
-                      <button
-                        type="button"
-                        className="task-text-button"
-                        onClick={cancelEdit}
-                        disabled={busy}
-                      >
-                        Cancel
-                      </button>
-                    </div>
-                  </div>
-                ) : (
-                  <>
-                    <button
-                      type="button"
-                      className="task-check"
-                      aria-label={
-                        item.completed
-                          ? "Reopen task"
-                          : "Complete task"
-                      }
-                      aria-pressed={item.completed}
-                      onClick={() => toggleCompleted(item)}
-                      disabled={busy}
-                    >
-                      <span aria-hidden="true">
-                        {item.completed ? "✓" : ""}
-                      </span>
-                    </button>
-
-                    <div className="task-content">
-                      <span className="task-text">
-                        {item.task}
-                      </span>
-
-                      {item.deadline && (
-                        <small>
-                          {item.deadline}
-                        </small>
-                      )}
-
-                      {item.completed && (
-                        <span className="task-completed-label">
-                          Completed
+              return (
+                <li
+                  className={
+                    `task-item${
+                      item.completed
+                        ? " task-completed"
+                        : ""
+                    }`
+                  }
+                  key={
+                    item.id
+                  }
+                >
+                  {editing ? (
+                    <div className="task-edit-form">
+                      <label>
+                        <span>
+                          Task
                         </span>
-                      )}
+
+                        <input
+                          value={
+                            draftTask
+                          }
+                          onChange={
+                            (event) =>
+                              setDraftTask(
+                                event.target.value
+                              )
+                          }
+                          maxLength={
+                            500
+                          }
+                          disabled={
+                            busy
+                          }
+                        />
+                      </label>
+
+                      <label>
+                        <span>
+                          Deadline
+                        </span>
+
+                        <input
+                          value={
+                            draftDeadline
+                          }
+                          onChange={
+                            (event) =>
+                              setDraftDeadline(
+                                event.target.value
+                              )
+                          }
+                          maxLength={
+                            200
+                          }
+                          placeholder={
+                            "Optional"
+                          }
+                          disabled={
+                            busy
+                          }
+                        />
+                      </label>
+
+                      <div className="task-edit-actions">
+                        <button
+                          type="button"
+                          className="task-text-button"
+                          onClick={() =>
+                            saveEdit(
+                              item
+                            )
+                          }
+                          disabled={
+                            busy
+                            || !draftTask.trim()
+                          }
+                        >
+                          {busy
+                            ? "Saving…"
+                            : "Save"}
+                        </button>
+
+                        <button
+                          type="button"
+                          className="task-text-button"
+                          onClick={
+                            cancelEdit
+                          }
+                          disabled={
+                            busy
+                          }
+                        >
+                          Cancel
+                        </button>
+                      </div>
                     </div>
 
-                    <div className="task-actions">
+                  ) : (
+                    <>
                       <button
                         type="button"
-                        className="task-icon-button"
-                        onClick={() => beginEdit(item)}
-                        disabled={busy}
-                        aria-label="Edit task"
-                        title="Edit task"
+                        className="task-check"
+                        aria-label={
+                          item.completed
+                            ? "Reopen task"
+                            : "Complete task"
+                        }
+                        aria-pressed={
+                          item.completed
+                        }
+                        onClick={() =>
+                          toggleCompleted(
+                            item
+                          )
+                        }
+                        disabled={
+                          busy
+                        }
                       >
-                        Edit
+                        <span aria-hidden="true">
+                          {item.completed
+                            ? "✓"
+                            : ""}
+                        </span>
                       </button>
 
-                      <button
-                        type="button"
-                        className="task-icon-button task-delete-button"
-                        onClick={() => handleDelete(item)}
-                        disabled={busy}
-                        aria-label="Delete task"
-                        title="Delete task"
-                      >
-                        Delete
-                      </button>
-                    </div>
-                  </>
-                )}
-              </li>
-            );
-          })}
+                      <div className="task-content">
+                        <span className="task-text">
+                          {
+                            item.task
+                          }
+                        </span>
+
+                        {item.deadline && (
+                          <small>
+                            {
+                              item.deadline
+                            }
+                          </small>
+                        )}
+
+                        {item.completed && (
+                          <span className="task-completed-label">
+                            Completed
+                          </span>
+                        )}
+                      </div>
+
+                      <div className="task-actions">
+                        <button
+                          type="button"
+                          className="task-icon-button"
+                          onClick={() =>
+                            beginEdit(
+                              item
+                            )
+                          }
+                          disabled={
+                            busy
+                          }
+                          aria-label={
+                            "Edit task"
+                          }
+                          title={
+                            "Edit task"
+                          }
+                        >
+                          Edit
+                        </button>
+
+                        <button
+                          type="button"
+                          className={
+                            "task-icon-button "
+                            + "task-delete-button"
+                          }
+                          onClick={() =>
+                            handleDelete(
+                              item
+                            )
+                          }
+                          disabled={
+                            busy
+                          }
+                          aria-label={
+                            "Delete task"
+                          }
+                          title={
+                            "Delete task"
+                          }
+                        >
+                          Delete
+                        </button>
+                      </div>
+                    </>
+                  )}
+                </li>
+              );
+            }
+          )}
         </ul>
       )}
 
-      {error && items.length > 0 && (
-        <p className="task-error">
-          {error}
-        </p>
-      )}
+      {error
+        && items.length > 0
+        && (
+          <p className="task-error">
+            {error}
+          </p>
+        )}
     </div>
   );
 }
 
 
+function PeopleView({
+  theme,
+  people,
+  loading,
+  error,
+  selectedPerson,
+  personLoading,
+  onOpenPerson,
+  onClosePerson,
+  onBack,
+  onOpenCall,
+  onCalls,
+  onAsk,
+  onToggleTheme,
+  onRefresh,
+}: {
+  theme: Theme;
+  people: Person[];
+  loading: boolean;
+  error: string;
+  selectedPerson:
+    PersonDetail | null;
+  personLoading: boolean;
+
+  onOpenPerson:
+    (person: Person) => void;
+
+  onClosePerson:
+    () => void;
+
+  onBack:
+    () => void;
+
+  onOpenCall:
+    (call: Call) => void;
+
+  onCalls:
+    () => void;
+
+  onAsk:
+    () => void;
+
+  onToggleTheme:
+    () => void;
+
+  onRefresh:
+    () => void;
+}) {
+  return (
+    <main className="app-shell">
+      <TopBar
+        theme={
+          theme
+        }
+        onToggleTheme={
+          onToggleTheme
+        }
+        onCalls={
+          onCalls
+        }
+        onAsk={
+          onAsk
+        }
+        onPeople={() => {}}
+      />
+
+      <section className="people-shell">
+        <button
+          type="button"
+          className="back-button"
+          onClick={
+            onBack
+          }
+        >
+          ← Calls
+        </button>
+
+        <div className="people-header">
+          <span className="section-label">
+            People
+          </span>
+
+          <h1>
+            People memory
+          </h1>
+
+          <p>
+            The people connected to your
+            saved conversations.
+          </p>
+        </div>
+
+        {error && (
+          <div className="error-state">
+            <p>
+              {error}
+            </p>
+
+            <button
+              type="button"
+              className="secondary-button"
+              onClick={
+                onRefresh
+              }
+            >
+              Try again
+            </button>
+          </div>
+        )}
+
+        {personLoading ? (
+          <p className="empty-state">
+            Loading person memory…
+          </p>
+
+        ) : selectedPerson ? (
+          <PersonDetailView
+            person={
+              selectedPerson
+            }
+            onBack={
+              onClosePerson
+            }
+            onOpenCall={
+              onOpenCall
+            }
+          />
+
+        ) : loading ? (
+          <p className="empty-state">
+            Loading people…
+          </p>
+
+        ) : people.length === 0 ? (
+          <section className="people-empty">
+            <h2>
+              No people yet
+            </h2>
+
+            <p>
+              People will appear here
+              when TCA finds names
+              associated with your
+              saved conversations.
+            </p>
+          </section>
+
+        ) : (
+          <section className="people-list-section">
+            <div className="history-heading">
+              <div>
+                <span className="section-label">
+                  Your people
+                </span>
+
+                <h2>
+                  {people.length}{" "}
+                  {
+                    people.length === 1
+                      ? "person"
+                      : "people"
+                  }
+                </h2>
+              </div>
+            </div>
+
+            <div className="people-list">
+              {people.map(
+                (person) => (
+                  <button
+                    key={
+                      person.id
+                    }
+                    type="button"
+                    className="person-row"
+                    onClick={() =>
+                      onOpenPerson(
+                        person
+                      )
+                    }
+                  >
+                    <span className="person-row-copy">
+                      <strong>
+                        {
+                          person.name
+                        }
+                      </strong>
+
+                      <span>
+                        {
+                          person
+                            .conversation_count
+                        }{" "}
+                        {
+                          person
+                            .conversation_count
+                            === 1
+                            ? "conversation"
+                            : "conversations"
+                        }
+                      </span>
+                    </span>
+
+                    <span className="call-arrow">
+                      →
+                    </span>
+                  </button>
+                )
+              )}
+            </div>
+          </section>
+        )}
+      </section>
+    </main>
+  );
+}
+
+
+function PersonDetailView({
+  person,
+  onBack,
+  onOpenCall,
+}: {
+  person: PersonDetail;
+  onBack: () => void;
+  onOpenCall: (
+    call: Call
+  ) => void;
+}) {
+  return (
+    <section className="person-detail">
+      <button
+        type="button"
+        className="back-button"
+        onClick={
+          onBack
+        }
+      >
+        ← People
+      </button>
+
+      <header className="person-detail-header">
+        <span className="section-label">
+          Person
+        </span>
+
+        <h2>
+          {person.name}
+        </h2>
+
+        <p>
+          {person.conversation_count}{" "}
+          {
+            person
+              .conversation_count
+              === 1
+              ? "conversation"
+              : "conversations"
+          }
+        </p>
+      </header>
+
+      <section className="person-memory-section">
+        <span className="section-label">
+          Open next steps
+        </span>
+
+        {person.open_next_steps.length === 0 ? (
+          <p className="muted">
+            Nothing open for this person.
+          </p>
+
+        ) : (
+          <ul className="person-task-list">
+            {person.open_next_steps.map(
+              (task) => (
+                <li
+                  key={
+                    task.id
+                  }
+                >
+                  <strong>
+                    {task.task}
+                  </strong>
+
+                  {task.deadline
+                    && (
+                      <span>
+                        {
+                          task.deadline
+                        }
+                      </span>
+                    )}
+                </li>
+              )
+            )}
+          </ul>
+        )}
+      </section>
+
+      <section className="person-memory-section">
+        <span className="section-label">
+          Recent decisions
+        </span>
+
+        {person.recent_decisions.length === 0 ? (
+          <p className="muted">
+            No decisions recorded.
+          </p>
+
+        ) : (
+          <ul className="person-decision-list">
+            {person.recent_decisions.map(
+              (
+                decision,
+                index
+              ) => (
+                <li
+                  key={
+                    `${decision}-${index}`
+                  }
+                >
+                  {decision}
+                </li>
+              )
+            )}
+          </ul>
+        )}
+      </section>
+
+      <section className="person-memory-section">
+        <span className="section-label">
+          Conversations
+        </span>
+
+        <div className="person-conversation-list">
+          {person.conversations.map(
+            (call) => (
+              <button
+                key={
+                  call.id
+                }
+                type="button"
+                className="person-conversation-row"
+                onClick={() =>
+                  onOpenCall(
+                    call
+                  )
+                }
+              >
+                <span>
+                  <strong>
+                    {call.title}
+                  </strong>
+
+                  <small>
+                    {formatDate(
+                      call.created_at
+                    )}
+                  </small>
+                </span>
+
+                <span className="call-arrow">
+                  →
+                </span>
+              </button>
+            )
+          )}
+        </div>
+      </section>
+    </section>
+  );
+}
+
+
+/*
+ * V3 PRIMARY NAVIGATION
+ *
+ * Calls / Ask TCA / People are
+ * available on the memory screens.
+ *
+ * The recording pipeline intentionally
+ * does not receive navigation callbacks.
+ */
+
 function TopBar({
   theme,
   onToggleTheme,
+  onCalls,
+  onAsk,
+  onPeople,
 }: {
   theme: Theme;
 
   onToggleTheme:
+    () => void;
+
+  onCalls?:
+    () => void;
+
+  onAsk?:
+    () => void;
+
+  onPeople?:
     () => void;
 }) {
   return (
@@ -4475,6 +5568,42 @@ function TopBar({
       </div>
 
       <div className="topbar-actions">
+        {onCalls && (
+          <button
+            type="button"
+            className="topbar-nav-button"
+            onClick={
+              onCalls
+            }
+          >
+            Calls
+          </button>
+        )}
+
+        {onAsk && (
+          <button
+            type="button"
+            className="topbar-nav-button"
+            onClick={
+              onAsk
+            }
+          >
+            Ask TCA
+          </button>
+        )}
+
+        {onPeople && (
+          <button
+            type="button"
+            className="topbar-nav-button"
+            onClick={
+              onPeople
+            }
+          >
+            People
+          </button>
+        )}
+
         <button
           className="theme-toggle"
           type="button"

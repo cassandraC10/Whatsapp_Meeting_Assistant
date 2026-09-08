@@ -128,3 +128,30 @@ class TasksResponse(
     tasks: list[Task] = Field(
         default_factory=list
     )
+
+
+class Person(BaseModel):
+    id: str
+    name: str
+    conversation_count: int = 0
+
+
+class PersonTask(BaseModel):
+    id: str
+    call_id: str
+    task: str
+    deadline: str | None = None
+    completed: bool = False
+
+
+class PersonDetail(BaseModel):
+    id: str
+    name: str
+    conversation_count: int = 0
+    open_next_steps: list[PersonTask] = Field(default_factory=list)
+    recent_decisions: list[str] = Field(default_factory=list)
+    conversations: list[Call] = Field(default_factory=list)
+
+
+class PeopleResponse(BaseModel):
+    people: list[Person] = Field(default_factory=list)

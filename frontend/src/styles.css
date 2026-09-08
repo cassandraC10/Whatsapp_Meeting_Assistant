@@ -3313,3 +3313,169 @@ input:checked
     font-size: 14px;
   }
 }
+
+
+/* V3.4 — People Memory */
+.people-shell {
+  width: min(900px, calc(100% - 48px));
+  margin: 0 auto;
+  padding: 48px 0 80px;
+}
+
+.people-header {
+  margin: 44px 0 42px;
+}
+
+.people-header h1 {
+  margin: 8px 0 10px;
+}
+
+.people-header p {
+  margin: 0;
+  color: var(--muted);
+}
+
+.people-list-section,
+.people-empty,
+.person-detail {
+  border-top: 1px solid var(--line);
+  padding-top: 28px;
+}
+
+.people-list {
+  border-top: 1px solid var(--line);
+}
+
+.person-row,
+.person-conversation-row {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 22px 0;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.person-row:hover strong,
+.person-conversation-row:hover strong {
+  text-decoration: underline;
+}
+
+.person-row-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.person-row-copy strong {
+  font-size: 18px;
+}
+
+.person-row-copy span,
+.person-conversation-row small {
+  color: var(--muted);
+}
+
+.person-detail-header {
+  margin: 36px 0 44px;
+}
+
+.person-detail-header h2 {
+  margin: 8px 0;
+  font-size: clamp(32px, 5vw, 48px);
+}
+
+.person-detail-header p {
+  margin: 0;
+  color: var(--muted);
+}
+
+.person-memory-section {
+  border-top: 1px solid var(--line);
+  padding: 28px 0;
+}
+
+.person-task-list,
+.person-decision-list {
+  margin: 18px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.person-task-list li {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  padding: 15px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.person-task-list li span {
+  color: var(--accent);
+  font-size: 13px;
+}
+
+.person-decision-list li {
+  position: relative;
+  padding: 10px 0 10px 20px;
+}
+
+.person-decision-list li::before {
+  content: "•";
+  position: absolute;
+  left: 2px;
+}
+
+.person-conversation-list {
+  margin-top: 12px;
+}
+
+.person-conversation-row span:first-child {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.topbar-nav-button {
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  font: inherit;
+  padding: 8px 4px;
+}
+
+.topbar-nav-button:hover {
+  color: var(--text);
+}
+
+@media (max-width: 720px) {
+  .people-shell {
+    width: min(100% - 32px, 900px);
+    padding: 28px 0 56px;
+  }
+
+  .people-header {
+    margin: 32px 0;
+  }
+
+  .person-row,
+  .person-conversation-row {
+    gap: 14px;
+    padding: 18px 0;
+  }
+
+  .person-row-copy strong {
+    font-size: 16px;
+  }
+
+  .topbar-nav-button {
+    font-size: 13px;
+  }
+}

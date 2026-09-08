@@ -10,6 +10,8 @@ from backend.app.models import (
     Call,
     CallStatus,
     CreateCallRequest,
+    PersonDetail,
+    PeopleResponse,
     Task,
     TasksResponse,
     UpdateTaskRequest,
@@ -239,6 +241,32 @@ def get_call(
     return require_call(
         call_id
     )
+
+
+@app.get(
+    "/people",
+    response_model=PeopleResponse,
+)
+def get_people():
+    return PeopleResponse(
+        people=call_repository.list_people()
+    )
+
+
+@app.get(
+    "/people/{person_id}",
+    response_model=PersonDetail,
+)
+def get_person(
+    person_id: str,
+):
+    person = call_repository.get_person_detail(person_id)
+    if person is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Person not found.",
+        )
+    return person
 
 
 @app.get(
