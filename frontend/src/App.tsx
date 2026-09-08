@@ -20,18 +20,25 @@ import {
   processCall,
   resumeCallRecording,
   searchCalls,
+  askTca,
   startCallRecording,
+  getCallTasks,
+  updateCallTask,
+  deleteCallTask,
 } from "./api";
 
 import type {
+  AskResponse,
   Call,
   CallNotes,
   SearchResult,
+  Task,
 } from "./api";
 
 
 type View =
   | "calls"
+  | "ask"
   | "consent"
   | "recording"
   | "processing"
@@ -539,6 +546,27 @@ function App() {
   ] = useState(false);
 
 
+  const [
+    selectedTasks,
+    setSelectedTasks,
+  ] = useState<Task[]>([]);
+
+  const [
+    tasksLoading,
+    setTasksLoading,
+  ] = useState(false);
+
+  const [
+    tasksError,
+    setTasksError,
+  ] = useState("");
+
+  const [
+    taskBusyId,
+    setTaskBusyId,
+  ] = useState<string | null>(null);
+
+
   /*
    * V3 SEARCH
    */
@@ -570,6 +598,33 @@ function App() {
     searchQuery
       .trim()
       .length > 0;
+
+
+  /*
+   * FEATURE 1 — ASK TCA
+   */
+
+  const [
+    askQuestion,
+    setAskQuestion,
+  ] = useState("");
+
+  const [
+    askResult,
+    setAskResult,
+  ] = useState<AskResponse | null>(
+    null
+  );
+
+  const [
+    asking,
+    setAsking,
+  ] = useState(false);
+
+  const [
+    askError,
+    setAskError,
+  ] = useState("");
 
 
   useEffect(() => {
@@ -848,6 +903,115 @@ function App() {
   }
 
 
+  function openAskView(
+    call?: Call
+  ) {
+    setAskError("");
+    setAskResult(null);
+
+    if (call) {
+      setSelectedCall(call);
+    } else {
+      setSelectedCall(null);
+    }
+
+    setView("ask");
+  }
+
+
+  function clearAsk() {
+    setAskQuestion("");
+    setAskResult(null);
+    setAskError("");
+  }
+
+
+  async function submitAsk(
+    event: FormEvent
+  ) {
+    event.preventDefault();
+
+    const cleanQuestion =
+      askQuestion.trim();
+
+    if (
+      !cleanQuestion
+      || asking
+    ) {
+      return;
+    }
+
+    setAsking(true);
+    setAskError("");
+
+    try {
+      const result =
+        await askTca(
+          cleanQuestion,
+          selectedCall?.id
+        );
+
+      setAskResult(result);
+
+    } catch (error) {
+      setAskError(
+        error instanceof Error
+          ? error.message
+          : (
+            "Could not ask TCA "
+            + "right now."
+          )
+      );
+
+    } finally {
+      setAsking(false);
+    }
+  }
+
+
+  async function openSourceCall(
+    callId: string
+  ) {
+    const call =
+      calls.find(
+        (item) =>
+          item.id === callId
+      );
+
+    if (call) {
+      await openCall(call);
+      return;
+    }
+
+    try {
+      const fetchedCall =
+        await getCall(callId);
+
+      setCalls(
+        (current) => [
+          fetchedCall,
+          ...current.filter(
+            (item) =>
+              item.id !== callId
+          ),
+        ]
+      );
+
+      await openCall(fetchedCall);
+
+    } catch (error) {
+      setAskError(
+        error instanceof Error
+          ? error.message
+          : (
+            "Could not open "
+            + "that conversation."
+          )
+      );
+    }
+  }
+
+
   async function loadCalls() {
     setLoadingCalls(
       true
@@ -989,10 +1153,14 @@ function App() {
     );
 
     try {
+      setTasksLoading(true);
+      setTasksError("");
+
       const [
         updatedCall,
         notesResult,
         transcriptResult,
+        tasksResult,
       ] =
         await Promise.all([
           getCall(
@@ -1004,6 +1172,10 @@ function App() {
           ),
 
           getCallTranscript(
+            callId
+          ),
+
+          getCallTasks(
             callId
           ),
         ]);
@@ -1021,6 +1193,10 @@ function App() {
           .transcript
       );
 
+      setSelectedTasks(
+        tasksResult.tasks
+      );
+
       updateCallInList(
         updatedCall
       );
@@ -1034,6 +1210,12 @@ function App() {
       );
 
     } catch (error) {
+      setTasksError(
+        error instanceof Error
+          ? error.message
+          : "Could not load next steps."
+      );
+
       setDetailError(
         error instanceof Error
           ? error.message
@@ -1048,9 +1230,84 @@ function App() {
       );
 
     } finally {
+      setTasksLoading(false);
       setLoadingDetail(
         false
       );
+    }
+  }
+
+
+  async function updateTaskState(
+    taskId: string,
+    changes: {
+      task?: string;
+      deadline?: string | null;
+      completed?: boolean;
+    }
+  ) {
+    if (!selectedCall) {
+      return;
+    }
+
+    setTaskBusyId(taskId);
+    setTasksError("");
+
+    try {
+      const updatedTask = await updateCallTask(
+        selectedCall.id,
+        taskId,
+        changes
+      );
+
+      setSelectedTasks((current) =>
+        current.map((task) =>
+          task.id === updatedTask.id
+            ? updatedTask
+            : task
+        )
+      );
+    } catch (error) {
+      setTasksError(
+        error instanceof Error
+          ? error.message
+          : "Could not update that task."
+      );
+      throw error;
+    } finally {
+      setTaskBusyId(null);
+    }
+  }
+
+
+  async function removeTask(
+    taskId: string
+  ) {
+    if (!selectedCall) {
+      return;
+    }
+
+    setTaskBusyId(taskId);
+    setTasksError("");
+
+    try {
+      await deleteCallTask(
+        selectedCall.id,
+        taskId
+      );
+
+      setSelectedTasks((current) =>
+        current.filter((task) => task.id !== taskId)
+      );
+    } catch (error) {
+      setTasksError(
+        error instanceof Error
+          ? error.message
+          : "Could not delete that task."
+      );
+      throw error;
+    } finally {
+      setTaskBusyId(null);
     }
   }
 
@@ -1069,6 +1326,10 @@ function App() {
     setSelectedTranscript(
       null
     );
+
+    setSelectedTasks([]);
+    setTasksError("");
+    setTasksLoading(false);
 
     setTranscriptOpen(
       false
@@ -1147,6 +1408,10 @@ function App() {
     setProcessingSeconds(
       0
     );
+
+    setAskQuestion("");
+    setAskResult(null);
+    setAskError("");
 
     loadCalls();
   }
@@ -1709,6 +1974,40 @@ function App() {
 
 
   if (
+    view === "ask"
+  ) {
+    return (
+      <AskTcaView
+        theme={theme}
+        question={askQuestion}
+        result={askResult}
+        asking={asking}
+        error={askError}
+        selectedCall={selectedCall}
+        onQuestionChange={
+          setAskQuestion
+        }
+        onSubmit={
+          submitAsk
+        }
+        onClear={
+          clearAsk
+        }
+        onBack={
+          returnToCalls
+        }
+        onToggleTheme={
+          toggleTheme
+        }
+        onOpenSource={
+          openSourceCall
+        }
+      />
+    );
+  }
+
+
+  if (
     view === "consent"
     && selectedCall
   ) {
@@ -1836,6 +2135,12 @@ function App() {
         deleting={
           deletingCall
         }
+        tasks={selectedTasks}
+        tasksLoading={tasksLoading}
+        tasksError={tasksError}
+        taskBusyId={taskBusyId}
+        onUpdateTask={updateTaskState}
+        onDeleteTask={removeTask}
         onToggleTheme={
           toggleTheme
         }
@@ -1843,6 +2148,11 @@ function App() {
           setTranscriptOpen(
             (current) =>
               !current
+          )
+        }
+        onAskAboutCall={() =>
+          openAskView(
+            selectedCall
           )
         }
         onBack={
@@ -1951,8 +2261,15 @@ function App() {
 
 
         {!searchActive && (
-          <form
-            className="call-composer"
+          <>
+            <AskTcaEntry
+              onOpen={() =>
+                openAskView()
+              }
+            />
+
+            <form
+              className="call-composer"
             onSubmit={
               handleSubmit
             }
@@ -2004,7 +2321,8 @@ function App() {
                   : "Start call"}
               </button>
             </div>
-          </form>
+            </form>
+          </>
         )}
 
 
@@ -2095,6 +2413,316 @@ function App() {
         )}
       </section>
     </main>
+  );
+}
+
+
+function AskTcaEntry({
+  onOpen,
+}: {
+  onOpen: () => void;
+}) {
+  return (
+    <section className="ask-entry">
+      <div className="ask-entry-copy">
+        <span className="section-label">
+          Ask TCA
+        </span>
+
+        <h2>
+          What do you want to remember?
+        </h2>
+
+        <p>
+          Ask a question across your
+          saved conversations.
+        </p>
+      </div>
+
+      <button
+        type="button"
+        className="secondary-button"
+        onClick={onOpen}
+      >
+        Ask TCA
+      </button>
+    </section>
+  );
+}
+
+
+function AskTcaView({
+  theme,
+  question,
+  result,
+  asking,
+  error,
+  selectedCall,
+  onQuestionChange,
+  onSubmit,
+  onClear,
+  onBack,
+  onToggleTheme,
+  onOpenSource,
+}: {
+  theme: Theme;
+  question: string;
+  result: AskResponse | null;
+  asking: boolean;
+  error: string;
+  selectedCall: Call | null;
+
+  onQuestionChange:
+    (value: string) => void;
+
+  onSubmit:
+    (event: FormEvent) => void;
+
+  onClear:
+    () => void;
+
+  onBack:
+    () => void;
+
+  onToggleTheme:
+    () => void;
+
+  onOpenSource:
+    (callId: string) => void;
+}) {
+  const scoped =
+    Boolean(selectedCall);
+
+  return (
+    <main className="app-shell">
+      <TopBar
+        theme={theme}
+        onToggleTheme={onToggleTheme}
+      />
+
+      <section className="ask-shell">
+        <button
+          type="button"
+          className="back-button"
+          onClick={onBack}
+        >
+          ← Calls
+        </button>
+
+        <div className="ask-header">
+          <span className="section-label">
+            {scoped
+              ? "Ask about this call"
+              : "Ask TCA"}
+          </span>
+
+          <h1>
+            {scoped
+              ? selectedCall?.title
+              : "What do you want to remember?"}
+          </h1>
+
+          <p>
+            {scoped
+              ? (
+                "Ask anything about "
+                + "this conversation."
+              )
+              : (
+                "Ask a question and TCA "
+                + "will look through your "
+                + "saved conversations."
+              )}
+          </p>
+        </div>
+
+        <form
+          className="ask-form"
+          onSubmit={onSubmit}
+        >
+          <label
+            htmlFor="ask-question"
+            className="section-label"
+          >
+            Your question
+          </label>
+
+          <textarea
+            id="ask-question"
+            value={question}
+            onChange={(event) =>
+              onQuestionChange(
+                event.target.value
+              )
+            }
+            placeholder={
+              scoped
+                ? (
+                  "What did we agree "
+                  + "about the launch?"
+                )
+                : (
+                  "What did Ayo say "
+                  + "about onboarding?"
+                )
+            }
+            rows={3}
+            maxLength={1000}
+            autoFocus
+          />
+
+          <div className="ask-form-footer">
+            <span className="ask-scope">
+              {scoped
+                ? "This conversation only"
+                : "All saved conversations"}
+            </span>
+
+            <div className="ask-form-actions">
+              {(question.trim() || result) && (
+                <button
+                  type="button"
+                  className="secondary-button"
+                  onClick={onClear}
+                  disabled={asking}
+                >
+                  Clear
+                </button>
+              )}
+
+              <button
+                type="submit"
+                className="primary-button"
+                disabled={
+                  asking
+                  || !question.trim()
+                }
+              >
+                {asking
+                  ? "Thinking…"
+                  : "Ask TCA"}
+              </button>
+            </div>
+          </div>
+        </form>
+
+        {error && (
+          <div className="notice notice-error ask-notice">
+            <strong>
+              TCA couldn't answer that.
+            </strong>
+
+            <p>{error}</p>
+          </div>
+        )}
+
+        {asking && (
+          <div className="ask-loading">
+            <span className="ask-loading-dot" />
+            <span>
+              Looking through your
+              conversations…
+            </span>
+          </div>
+        )}
+
+        {!asking && result && (
+          <AskAnswer
+            result={result}
+            onOpenSource={onOpenSource}
+          />
+        )}
+      </section>
+    </main>
+  );
+}
+
+
+function AskAnswer({
+  result,
+  onOpenSource,
+}: {
+  result: AskResponse;
+  onOpenSource:
+    (callId: string) => void;
+}) {
+  return (
+    <section className="ask-answer">
+      <div className="ask-answer-header">
+        <span className="section-label">
+          Answer
+        </span>
+
+        {!result.found_answer && (
+          <span className="ask-answer-state">
+            No match
+          </span>
+        )}
+      </div>
+
+      <div className="ask-answer-body">
+        <p>{result.answer}</p>
+      </div>
+
+      {result.sources.length > 0 && (
+        <div className="ask-sources">
+          <div className="ask-sources-heading">
+            <span className="section-label">
+              From your conversations
+            </span>
+
+            <span className="ask-source-count">
+              {result.sources.length}
+            </span>
+          </div>
+
+          <div className="ask-source-list">
+            {result.sources.map(
+              (source) => (
+                <button
+                  type="button"
+                  className="ask-source"
+                  key={source.call_id}
+                  onClick={() =>
+                    onOpenSource(
+                      source.call_id
+                    )
+                  }
+                >
+                  <div className="ask-source-main">
+                    <h3>{source.title}</h3>
+
+                    <div className="ask-source-meta">
+                      {formatDate(
+                        source.created_at
+                      )}
+                    </div>
+
+                    {source.snippet && (
+                      <p>
+                        {source.snippet}
+                      </p>
+                    )}
+                  </div>
+
+                  <span className="call-arrow">
+                    →
+                  </span>
+                </button>
+              )
+            )}
+          </div>
+        </div>
+      )}
+
+      {result.sources.length === 0
+        && result.found_answer && (
+          <p className="ask-source-note">
+            No source conversation was
+            returned with this answer.
+          </p>
+        )}
+    </section>
   );
 }
 
@@ -2847,10 +3475,38 @@ interface CallDetailProps {
   deleting:
     boolean;
 
+  tasks:
+    Task[];
+
+  tasksLoading:
+    boolean;
+
+  tasksError:
+    string;
+
+  taskBusyId:
+    string | null;
+
+  onUpdateTask:
+    (
+      taskId: string,
+      changes: {
+        task?: string;
+        deadline?: string | null;
+        completed?: boolean;
+      }
+    ) => Promise<void>;
+
+  onDeleteTask:
+    (taskId: string) => Promise<void>;
+
   onToggleTheme:
     () => void;
 
   onToggleTranscript:
+    () => void;
+
+  onAskAboutCall:
     () => void;
 
   onBack:
@@ -2886,8 +3542,15 @@ function CallDetail({
   theme,
   actionMessage,
   deleting,
+  tasks,
+  tasksLoading,
+  tasksError,
+  taskBusyId,
+  onUpdateTask,
+  onDeleteTask,
   onToggleTheme,
   onToggleTranscript,
+  onAskAboutCall,
   onBack,
   onContinueCreatedCall,
   onProcessCall,
@@ -3071,18 +3734,26 @@ function CallDetail({
                 <div className="next-steps">
                   <ActionColumn
                     title="My next steps"
-                    items={
-                      notes
-                        .my_action_items
-                    }
+                    items={tasks.filter(
+                      (task) => task.owner === "me"
+                    )}
+                    loading={tasksLoading}
+                    error={tasksError}
+                    busyId={taskBusyId}
+                    onUpdateTask={onUpdateTask}
+                    onDeleteTask={onDeleteTask}
                   />
 
                   <ActionColumn
                     title="Their next steps"
-                    items={
-                      notes
-                        .their_action_items
-                    }
+                    items={tasks.filter(
+                      (task) => task.owner === "them"
+                    )}
+                    loading={tasksLoading}
+                    error={tasksError}
+                    busyId={taskBusyId}
+                    onUpdateTask={onUpdateTask}
+                    onDeleteTask={onDeleteTask}
                   />
                 </div>
               </section>
@@ -3111,6 +3782,29 @@ function CallDetail({
                   </p>
                 </section>
               )}
+
+              <section className="call-detail-ask">
+                <div>
+                  <span className="section-label">
+                    Ask TCA
+                  </span>
+
+                  <h2>
+                    Have a question about
+                    this conversation?
+                  </h2>
+                </div>
+
+                <button
+                  type="button"
+                  className="secondary-button"
+                  onClick={
+                    onAskAboutCall
+                  }
+                >
+                  Ask about this call
+                </button>
+              </section>
 
               <section className="transcript-section">
                 <button
@@ -3511,53 +4205,249 @@ function ListSection({
 function ActionColumn({
   title,
   items,
+  loading,
+  error,
+  busyId,
+  onUpdateTask,
+  onDeleteTask,
 }: {
   title: string;
-
-  items: {
-    task: string;
-    deadline:
-      string | null;
-  }[];
+  items: Task[];
+  loading: boolean;
+  error: string;
+  busyId: string | null;
+  onUpdateTask: (
+    taskId: string,
+    changes: {
+      task?: string;
+      deadline?: string | null;
+      completed?: boolean;
+    }
+  ) => Promise<void>;
+  onDeleteTask: (
+    taskId: string
+  ) => Promise<void>;
 }) {
+  const [editingId, setEditingId] =
+    useState<string | null>(null);
+
+  const [draftTask, setDraftTask] =
+    useState("");
+
+  const [draftDeadline, setDraftDeadline] =
+    useState("");
+
+  function beginEdit(item: Task) {
+    setEditingId(item.id);
+    setDraftTask(item.task);
+    setDraftDeadline(item.deadline || "");
+  }
+
+  function cancelEdit() {
+    setEditingId(null);
+    setDraftTask("");
+    setDraftDeadline("");
+  }
+
+  async function saveEdit(item: Task) {
+    const cleanTask = draftTask.trim();
+
+    if (!cleanTask) {
+      return;
+    }
+
+    try {
+      await onUpdateTask(item.id, {
+        task: cleanTask,
+        deadline: draftDeadline.trim() || null,
+      });
+      cancelEdit();
+    } catch {
+      // Parent displays the error.
+    }
+  }
+
+  async function toggleCompleted(item: Task) {
+    try {
+      await onUpdateTask(item.id, {
+        completed: !item.completed,
+      });
+    } catch {
+      // Parent displays the error.
+    }
+  }
+
+  async function handleDelete(item: Task) {
+    const confirmed = window.confirm(
+      `Delete this next step?\n\n${item.task}`
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
+    try {
+      await onDeleteTask(item.id);
+
+      if (editingId === item.id) {
+        cancelEdit();
+      }
+    } catch {
+      // Parent displays the error.
+    }
+  }
+
   return (
     <div className="action-column">
       <h3>
         {title}
       </h3>
 
-      {items.length
-        === 0 ? (
-          <p className="muted">
-            Nothing assigned.
-          </p>
+      {loading ? (
+        <p className="muted">
+          Loading next steps…
+        </p>
+      ) : items.length === 0 ? (
+        <p className="muted">
+          Nothing assigned.
+        </p>
+      ) : (
+        <ul className="task-list">
+          {items.map((item) => {
+            const busy = busyId === item.id;
+            const editing = editingId === item.id;
 
-        ) : (
-          <ul>
-            {items.map(
-              (
-                item,
-                index
-              ) => (
-                <li
-                  key={
-                    index
-                  }
-                >
-                  <span>
-                    {item.task}
-                  </span>
+            return (
+              <li
+                className={
+                  `task-item${
+                    item.completed
+                      ? " task-completed"
+                      : ""
+                  }`
+                }
+                key={item.id}
+              >
+                {editing ? (
+                  <div className="task-edit-form">
+                    <label>
+                      <span>Task</span>
+                      <input
+                        value={draftTask}
+                        onChange={(event) =>
+                          setDraftTask(event.target.value)
+                        }
+                        maxLength={500}
+                        disabled={busy}
+                      />
+                    </label>
 
-                  {item.deadline && (
-                    <small>
-                      {item.deadline}
-                    </small>
-                  )}
-                </li>
-              )
-            )}
-          </ul>
-        )}
+                    <label>
+                      <span>Deadline</span>
+                      <input
+                        value={draftDeadline}
+                        onChange={(event) =>
+                          setDraftDeadline(event.target.value)
+                        }
+                        maxLength={200}
+                        placeholder="Optional"
+                        disabled={busy}
+                      />
+                    </label>
+
+                    <div className="task-edit-actions">
+                      <button
+                        type="button"
+                        className="task-text-button"
+                        onClick={() => saveEdit(item)}
+                        disabled={busy || !draftTask.trim()}
+                      >
+                        {busy ? "Saving…" : "Save"}
+                      </button>
+
+                      <button
+                        type="button"
+                        className="task-text-button"
+                        onClick={cancelEdit}
+                        disabled={busy}
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    <button
+                      type="button"
+                      className="task-check"
+                      aria-label={
+                        item.completed
+                          ? "Reopen task"
+                          : "Complete task"
+                      }
+                      aria-pressed={item.completed}
+                      onClick={() => toggleCompleted(item)}
+                      disabled={busy}
+                    >
+                      <span aria-hidden="true">
+                        {item.completed ? "✓" : ""}
+                      </span>
+                    </button>
+
+                    <div className="task-content">
+                      <span className="task-text">
+                        {item.task}
+                      </span>
+
+                      {item.deadline && (
+                        <small>
+                          {item.deadline}
+                        </small>
+                      )}
+
+                      {item.completed && (
+                        <span className="task-completed-label">
+                          Completed
+                        </span>
+                      )}
+                    </div>
+
+                    <div className="task-actions">
+                      <button
+                        type="button"
+                        className="task-icon-button"
+                        onClick={() => beginEdit(item)}
+                        disabled={busy}
+                        aria-label="Edit task"
+                        title="Edit task"
+                      >
+                        Edit
+                      </button>
+
+                      <button
+                        type="button"
+                        className="task-icon-button task-delete-button"
+                        onClick={() => handleDelete(item)}
+                        disabled={busy}
+                        aria-label="Delete task"
+                        title="Delete task"
+                      >
+                        Delete
+                      </button>
+                    </div>
+                  </>
+                )}
+              </li>
+            );
+          })}
+        </ul>
+      )}
+
+      {error && items.length > 0 && (
+        <p className="task-error">
+          {error}
+        </p>
+      )}
     </div>
   );
 }

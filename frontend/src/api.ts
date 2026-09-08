@@ -78,6 +78,43 @@ export interface FinishRecordingResponse {
 }
 
 
+
+
+export type TaskOwner =
+  | "me"
+  | "them";
+
+
+export interface Task {
+  id: string;
+  call_id: string;
+  owner: TaskOwner;
+  task: string;
+  deadline: string | null;
+  completed: boolean;
+}
+
+
+export interface TasksResponse {
+  call_id: string;
+  tasks: Task[];
+}
+
+
+export interface UpdateTaskRequest {
+  task?: string;
+  deadline?: string | null;
+  completed?: boolean;
+}
+
+
+export interface DeleteTaskResponse {
+  status: "deleted";
+  call_id: string;
+  task_id: string;
+}
+
+
 export interface DeleteCallResponse {
   status: "deleted";
   call_id: string;
@@ -96,6 +133,23 @@ export interface SearchCallsResponse {
   count: number;
   results: SearchResult[];
 }
+
+
+export interface AskSource {
+  call_id: string;
+  title: string;
+  created_at: string;
+  snippet: string | null;
+}
+
+
+export interface AskResponse {
+  answer: string;
+  sources: AskSource[];
+  found_answer: boolean;
+}
+
+
 
 
 async function request<T>(
@@ -161,6 +215,44 @@ export function searchCalls(
         cleanQuery
       )
     }`
+  );
+}
+
+
+export function askTca(
+  question: string,
+  callId?: string
+): Promise<AskResponse> {
+  const cleanQuestion =
+    question.trim();
+
+  const body: {
+    question: string;
+    call_id?: string;
+  } = {
+    question:
+      cleanQuestion,
+  };
+
+  if (callId) {
+    body.call_id = callId;
+  }
+
+  return request<AskResponse>(
+    "/ask",
+    {
+      method: "POST",
+
+      headers: {
+        "Content-Type":
+          "application/json",
+        "Accept":
+          "application/json",
+      },
+
+      body:
+        JSON.stringify(body),
+    }
   );
 }
 
@@ -292,5 +384,45 @@ export function getCallTranscript(
 ): Promise<TranscriptResponse> {
   return request<TranscriptResponse>(
     `/calls/${callId}/transcript`
+  );
+}
+
+export function getCallTasks(
+  callId: string
+): Promise<TasksResponse> {
+  return request<TasksResponse>(
+    `/calls/${callId}/tasks`
+  );
+}
+
+
+export function updateCallTask(
+  callId: string,
+  taskId: string,
+  changes: UpdateTaskRequest
+): Promise<Task> {
+  return request<Task>(
+    `/calls/${callId}/tasks/${taskId}`,
+    {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+        "Accept": "application/json",
+      },
+      body: JSON.stringify(changes),
+    }
+  );
+}
+
+
+export function deleteCallTask(
+  callId: string,
+  taskId: string
+): Promise<DeleteTaskResponse> {
+  return request<DeleteTaskResponse>(
+    `/calls/${callId}/tasks/${taskId}`,
+    {
+      method: "DELETE",
+    }
   );
 }

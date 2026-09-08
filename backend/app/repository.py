@@ -3,9 +3,9 @@ import re
 import shutil
 from datetime import datetime, timezone
 from pathlib import Path
-from uuid import uuid4
+from uuid import NAMESPACE_URL, uuid4, uuid5
 
-from backend.app.models import Call, CallStatus
+from backend.app.models import Call, CallStatus, Task, TaskOwner
 
 
 BACKEND_ROOT = (
@@ -276,6 +276,284 @@ class CallRepository:
             )
 
         return results
+
+    def get_tasks(
+        self,
+        call_id: str,
+    ) -> list[Task]:
+        call_directory = (
+            self._call_directory(
+                call_id
+            )
+        )
+
+        if not call_directory.exists():
+            return []
+
+        tasks_file = (
+            call_directory
+            / "tasks.json"
+        )
+
+        if tasks_file.exists():
+            try:
+                raw_tasks = json.loads(
+                    tasks_file.read_text(
+                        encoding="utf-8"
+                    )
+                )
+            except (
+                json.JSONDecodeError,
+                OSError,
+            ):
+                raw_tasks = []
+
+            if not isinstance(
+                raw_tasks,
+                list,
+            ):
+                raw_tasks = []
+
+            tasks: list[Task] = []
+
+            for item in raw_tasks:
+                try:
+                    tasks.append(
+                        Task.model_validate(
+                            item
+                        )
+                    )
+                except Exception:
+                    continue
+
+            return tasks
+
+        tasks = self._build_tasks_from_notes(
+            call_id
+        )
+
+        self.save_tasks(
+            call_id,
+            tasks,
+        )
+
+        return tasks
+
+    def save_tasks(
+        self,
+        call_id: str,
+        tasks: list[Task],
+    ) -> None:
+        call_directory = (
+            self._call_directory(
+                call_id
+            )
+        )
+
+        call_directory.mkdir(
+            parents=True,
+            exist_ok=True,
+        )
+
+        tasks_file = (
+            call_directory
+            / "tasks.json"
+        )
+
+        tasks_file.write_text(
+            json.dumps(
+                [
+                    task.model_dump(
+                        mode="json"
+                    )
+                    for task in tasks
+                ],
+                indent=4,
+                ensure_ascii=False,
+            ),
+            encoding="utf-8",
+        )
+
+    def update_task(
+        self,
+        call_id: str,
+        task_id: str,
+        *,
+        task_text: str | None = None,
+        deadline: str | None = None,
+        deadline_provided: bool = False,
+        completed: bool | None = None,
+    ) -> Task | None:
+        tasks = self.get_tasks(
+            call_id
+        )
+
+        for index, task in enumerate(tasks):
+            if task.id != task_id:
+                continue
+
+            if task_text is not None:
+                task.task = task_text.strip()
+
+            if deadline_provided:
+                cleaned_deadline = (
+                    deadline.strip()
+                    if deadline is not None
+                    else ""
+                )
+                task.deadline = (
+                    cleaned_deadline
+                    or None
+                )
+
+            if completed is not None:
+                task.completed = completed
+
+            tasks[index] = task
+
+            self.save_tasks(
+                call_id,
+                tasks,
+            )
+
+            return task
+
+        return None
+
+    def delete_task(
+        self,
+        call_id: str,
+        task_id: str,
+    ) -> bool:
+        tasks = self.get_tasks(
+            call_id
+        )
+
+        remaining = [
+            task
+            for task in tasks
+            if task.id != task_id
+        ]
+
+        if len(remaining) == len(tasks):
+            return False
+
+        self.save_tasks(
+            call_id,
+            remaining,
+        )
+
+        return True
+
+    def _build_tasks_from_notes(
+        self,
+        call_id: str,
+    ) -> list[Task]:
+        call_directory = (
+            self._call_directory(
+                call_id
+            )
+        )
+
+        notes_file = (
+            call_directory
+            / "notes.json"
+        )
+
+        if not notes_file.exists():
+            return []
+
+        try:
+            notes = json.loads(
+                notes_file.read_text(
+                    encoding="utf-8"
+                )
+            )
+        except (
+            json.JSONDecodeError,
+            OSError,
+        ):
+            return []
+
+        tasks: list[Task] = []
+
+        owner_fields = (
+            (
+                TaskOwner.ME,
+                "my_action_items",
+            ),
+            (
+                TaskOwner.THEM,
+                "their_action_items",
+            ),
+        )
+
+        for owner, field_name in owner_fields:
+            items = notes.get(
+                field_name,
+                [],
+            )
+
+            if not isinstance(
+                items,
+                list,
+            ):
+                continue
+
+            for item in items:
+                if not isinstance(
+                    item,
+                    dict,
+                ):
+                    continue
+
+                task_text = str(
+                    item.get(
+                        "task",
+                        "",
+                    )
+                    or ""
+                ).strip()
+
+                if not task_text:
+                    continue
+
+                deadline_value = item.get(
+                    "deadline"
+                )
+                deadline = (
+                    str(deadline_value).strip()
+                    if deadline_value is not None
+                    else None
+                )
+
+                if not deadline:
+                    deadline = None
+
+                stable_key = (
+                    f"tca-task:{call_id}:"
+                    f"{owner.value}:"
+                    f"{task_text.casefold()}:"
+                    f"{deadline or ''}"
+                )
+
+                tasks.append(
+                    Task(
+                        id=str(
+                            uuid5(
+                                NAMESPACE_URL,
+                                stable_key,
+                            )
+                        ),
+                        call_id=call_id,
+                        owner=owner,
+                        task=task_text,
+                        deadline=deadline,
+                        completed=False,
+                    )
+                )
+
+        return tasks
 
     def delete(
         self,

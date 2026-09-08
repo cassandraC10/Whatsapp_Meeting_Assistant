@@ -1,34 +1,22 @@
 import json
 
-from fastapi import (
-    FastAPI,
-    HTTPException,
-    Query,
-    status,
-)
+from fastapi import FastAPI, HTTPException, Query, status
+from fastapi.middleware.cors import CORSMiddleware
 
-from fastapi.middleware.cors import (
-    CORSMiddleware,
-)
-
+from backend.app.ask_service import AskTCAService
 from backend.app.models import (
+    AskTCARequest,
+    AskTCAResponse,
     Call,
     CallStatus,
     CreateCallRequest,
+    Task,
+    TasksResponse,
+    UpdateTaskRequest,
 )
-
-from backend.app.processing_service import (
-    CallProcessingService,
-)
-
-from backend.app.recorder_manager import (
-    RecorderManager,
-)
-
-from backend.app.repository import (
-    CallRepository,
-)
-
+from backend.app.processing_service import CallProcessingService
+from backend.app.recorder_manager import RecorderManager
+from backend.app.repository import CallRepository
 
 app = FastAPI(
     title="TCA API",
@@ -62,6 +50,12 @@ recorder_manager = (
 
 processing_service = (
     CallProcessingService(
+        repository=call_repository
+    )
+)
+
+ask_service = (
+    AskTCAService(
         repository=call_repository
     )
 )
@@ -189,6 +183,52 @@ def search_calls(
     }
 
 
+@app.post(
+    "/ask",
+    response_model=AskTCAResponse,
+)
+def ask_tca(
+    request: AskTCARequest,
+):
+    try:
+        return ask_service.ask(
+            question=(
+                request.question
+            ),
+            call_id=(
+                request.call_id
+            ),
+        )
+
+    except RuntimeError as error:
+        message = str(
+            error
+        )
+
+        if (
+            message
+            == "Call not found."
+        ):
+            raise HTTPException(
+                status_code=404,
+                detail=message,
+            ) from error
+
+        if (
+            "only available for completed"
+            in message.lower()
+        ):
+            raise HTTPException(
+                status_code=409,
+                detail=message,
+            ) from error
+
+        raise HTTPException(
+            status_code=500,
+            detail=message,
+        ) from error
+
+
 @app.get(
     "/calls/{call_id}",
     response_model=Call,
@@ -199,6 +239,114 @@ def get_call(
     return require_call(
         call_id
     )
+
+
+@app.get(
+    "/calls/{call_id}/tasks",
+    response_model=TasksResponse,
+)
+def get_call_tasks(
+    call_id: str,
+):
+    require_call(
+        call_id
+    )
+
+    tasks = call_repository.get_tasks(
+        call_id
+    )
+
+    return TasksResponse(
+        call_id=call_id,
+        tasks=tasks,
+    )
+
+
+@app.patch(
+    "/calls/{call_id}/tasks/{task_id}",
+    response_model=Task,
+)
+def update_call_task(
+    call_id: str,
+    task_id: str,
+    request: UpdateTaskRequest,
+):
+    require_call(
+        call_id
+    )
+
+    if (
+        request.task is None
+        and request.deadline is None
+        and request.completed is None
+    ):
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Provide at least one task "
+                "field to update."
+            ),
+        )
+
+    if request.task is not None:
+        cleaned_task = request.task.strip()
+
+        if not cleaned_task:
+            raise HTTPException(
+                status_code=400,
+                detail="Task text cannot be empty.",
+            )
+    else:
+        cleaned_task = None
+
+    updated_task = call_repository.update_task(
+        call_id,
+        task_id,
+        task_text=cleaned_task,
+        deadline=request.deadline,
+        deadline_provided=(
+            "deadline"
+            in request.model_fields_set
+        ),
+        completed=request.completed,
+    )
+
+    if updated_task is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Task not found.",
+        )
+
+    return updated_task
+
+
+@app.delete(
+    "/calls/{call_id}/tasks/{task_id}",
+)
+def delete_call_task(
+    call_id: str,
+    task_id: str,
+):
+    require_call(
+        call_id
+    )
+
+    deleted = call_repository.delete_task(
+        call_id,
+        task_id,
+    )
+
+    if not deleted:
+        raise HTTPException(
+            status_code=404,
+            detail="Task not found.",
+        )
+
+    return {
+        "status": "deleted",
+        "call_id": call_id,
+        "task_id": task_id,
+    }
 
 
 @app.delete(
