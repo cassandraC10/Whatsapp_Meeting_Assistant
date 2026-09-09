@@ -39,6 +39,10 @@ import type {
   PersonDetail,
 } from "./api";
 
+import { AskTcaEntry } from "./components/AskTcaEntry";
+import { CallRow } from "./components/CallRow";
+import { ListSection } from "./components/ListSection";
+import { TopBar } from "./components/TopBar";
 
 type View =
   | "calls"
@@ -2854,42 +2858,6 @@ function App() {
 }
 
 
-function AskTcaEntry({
-  onOpen,
-}: {
-  onOpen: () => void;
-}) {
-  return (
-    <section className="ask-entry">
-      <div className="ask-entry-copy">
-        <span className="section-label">
-          Ask TCA
-        </span>
-
-        <h2>
-          What do you want to remember?
-        </h2>
-
-        <p>
-          Ask a question across your
-          saved conversations.
-        </p>
-      </div>
-
-      <button
-        type="button"
-        className="secondary-button"
-        onClick={
-          onOpen
-        }
-      >
-        Ask TCA
-      </button>
-    </section>
-  );
-}
-
-
 function AskTcaView({
   theme,
   question,
@@ -3412,60 +3380,6 @@ function SearchResultsView({
           </div>
         )}
     </section>
-  );
-}
-
-
-function CallRow({
-  call,
-  onOpen,
-}: {
-  call: Call;
-  onOpen: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      className="call-row"
-      onClick={
-        onOpen
-      }
-    >
-      <div className="call-date">
-        {formatDate(
-          call.created_at
-        )}
-      </div>
-
-      <div className="call-main">
-        <h3>
-          {call.title}
-        </h3>
-
-        <div className="call-meta">
-          <span>
-            {formatDuration(
-              call.duration_seconds
-            )}
-          </span>
-
-          <span
-            className={
-              `status `
-              + `status-${
-                call.status
-              }`
-            }
-          >
-            {call.status}
-          </span>
-        </div>
-      </div>
-
-      <span className="call-arrow">
-        →
-      </span>
-    </button>
   );
 }
 
@@ -4703,46 +4617,6 @@ function IncompleteCall({
 }
 
 
-function ListSection({
-  title,
-  items,
-}: {
-  title: string;
-  items: string[];
-}) {
-  if (
-    items.length === 0
-  ) {
-    return null;
-  }
-
-  return (
-    <section className="recap-section">
-      <h2>
-        {title}
-      </h2>
-
-      <ul className="note-list">
-        {items.map(
-          (
-            item,
-            index
-          ) => (
-            <li
-              key={
-                index
-              }
-            >
-              {item}
-            </li>
-          )
-        )}
-      </ul>
-    </section>
-  );
-}
-
-
 function ActionColumn({
   title,
   items,
@@ -5533,112 +5407,5 @@ function PersonDetailView({
  * The recording pipeline intentionally
  * does not receive navigation callbacks.
  */
-
-function TopBar({
-  theme,
-  onToggleTheme,
-  onCalls,
-  onAsk,
-  onPeople,
-}: {
-  theme: Theme;
-
-  onToggleTheme:
-    () => void;
-
-  onCalls?:
-    () => void;
-
-  onAsk?:
-    () => void;
-
-  onPeople?:
-    () => void;
-}) {
-  return (
-    <header className="topbar">
-      <div className="brand">
-        <span className="brand-mark">
-          TCA
-        </span>
-
-        <span className="brand-name">
-          The Call Assistant
-        </span>
-      </div>
-
-      <div className="topbar-actions">
-        {onCalls && (
-          <button
-            type="button"
-            className="topbar-nav-button"
-            onClick={
-              onCalls
-            }
-          >
-            Calls
-          </button>
-        )}
-
-        {onAsk && (
-          <button
-            type="button"
-            className="topbar-nav-button"
-            onClick={
-              onAsk
-            }
-          >
-            Ask TCA
-          </button>
-        )}
-
-        {onPeople && (
-          <button
-            type="button"
-            className="topbar-nav-button"
-            onClick={
-              onPeople
-            }
-          >
-            People
-          </button>
-        )}
-
-        <button
-          className="theme-toggle"
-          type="button"
-          onClick={
-            onToggleTheme
-          }
-          aria-label={
-            theme === "dark"
-              ? (
-                "Switch to "
-                + "light mode"
-              )
-              : (
-                "Switch to "
-                + "dark mode"
-              )
-          }
-          title={
-            theme === "dark"
-              ? "Light mode"
-              : "Dark mode"
-          }
-        >
-          {theme === "dark"
-            ? "☀"
-            : "☾"}
-        </button>
-
-        <span className="version">
-          V0.3
-        </span>
-      </div>
-    </header>
-  );
-}
-
 
 export default App;
