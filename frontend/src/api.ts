@@ -32,9 +32,17 @@ export interface Decision {
 }
 
 
+export interface Participant {
+  role: "me" | "them";
+  name: string | null;
+  source: string | null;
+}
+
+
 export interface CallNotes {
   title: string;
   summary: string;
+  participants: Participant[];
   key_points: string[];
   decisions: Decision[];
   my_action_items: ActionItem[];
@@ -283,6 +291,28 @@ export function createCall(
         title:
           title.trim()
           || null,
+      }),
+    }
+  );
+}
+
+
+export function updateCallTitle(
+  callId: string,
+  title: string
+): Promise<Call> {
+  return request<Call>(
+    `/calls/${callId}`,
+    {
+      method: "PATCH",
+      headers: {
+        "Content-Type":
+          "application/json",
+        "Accept":
+          "application/json",
+      },
+      body: JSON.stringify({
+        title: title.trim(),
       }),
     }
   );

@@ -9,6 +9,7 @@ from intelligence.summarizer import (
     summarize_call,
 )
 from transcription.transcriber import (
+    infer_remote_participant_name,
     transcribe_call,
 )
 
@@ -65,11 +66,18 @@ class CallProcessingService:
                     "Transcribing the conversation..."
                 )
 
+            remote_participant_name = (
+                infer_remote_participant_name(
+                    call.title
+                )
+            )
+
             transcript_result = (
                 transcribe_call(
                     call_directory=(
                         call_directory
                     ),
+                    call_title=call.title,
                     status_callback=(
                         status_callback
                     ),
@@ -97,6 +105,10 @@ class CallProcessingService:
                 summarize_call(
                     call_directory=(
                         call_directory
+                    ),
+                    call_title=call.title,
+                    remote_participant_name=(
+                        remote_participant_name
                     ),
                     status_callback=(
                         status_callback

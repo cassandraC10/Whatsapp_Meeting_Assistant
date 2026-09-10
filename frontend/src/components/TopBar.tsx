@@ -1,4 +1,18 @@
-type Theme = "light" | "dark";
+import type {
+  MouseEventHandler,
+} from "react";
+
+type Theme =
+  | "light"
+  | "dark";
+
+type TopBarProps = {
+  theme: Theme;
+  onToggleTheme: MouseEventHandler<HTMLButtonElement>;
+  onCalls?: () => void;
+  onAsk?: () => void;
+  onPeople?: () => void;
+};
 
 export function TopBar({
   theme,
@@ -6,24 +20,15 @@ export function TopBar({
   onCalls,
   onAsk,
   onPeople,
-}: {
-  theme: Theme;
-
-  onToggleTheme:
-    () => void;
-
-  onCalls?:
-    () => void;
-
-  onAsk?:
-    () => void;
-
-  onPeople?:
-    () => void;
-}) {
+}: TopBarProps) {
   return (
     <header className="topbar">
-      <div className="brand">
+      <button
+        className="brand"
+        type="button"
+        onClick={onCalls}
+        aria-label="Go to Calls"
+      >
         <span className="brand-mark">
           TCA
         </span>
@@ -31,16 +36,17 @@ export function TopBar({
         <span className="brand-name">
           The Call Assistant
         </span>
-      </div>
+      </button>
 
-      <div className="topbar-actions">
+      <nav
+        className="topbar-actions"
+        aria-label="Primary navigation"
+      >
         {onCalls && (
           <button
-            type="button"
             className="topbar-nav-button"
-            onClick={
-              onCalls
-            }
+            type="button"
+            onClick={onCalls}
           >
             Calls
           </button>
@@ -48,11 +54,9 @@ export function TopBar({
 
         {onAsk && (
           <button
-            type="button"
             className="topbar-nav-button"
-            onClick={
-              onAsk
-            }
+            type="button"
+            onClick={onAsk}
           >
             Ask TCA
           </button>
@@ -60,11 +64,9 @@ export function TopBar({
 
         {onPeople && (
           <button
-            type="button"
             className="topbar-nav-button"
-            onClick={
-              onPeople
-            }
+            type="button"
+            onClick={onPeople}
           >
             People
           </button>
@@ -73,37 +75,30 @@ export function TopBar({
         <button
           className="theme-toggle"
           type="button"
-          onClick={
-            onToggleTheme
-          }
+          onClick={onToggleTheme}
           aria-label={
             theme === "dark"
-              ? (
-                "Switch to "
-                + "light mode"
-              )
-              : (
-                "Switch to "
-                + "dark mode"
-              )
+              ? "Switch to light theme"
+              : "Switch to dark theme"
           }
           title={
             theme === "dark"
-              ? "Light mode"
-              : "Dark mode"
+              ? "Light theme"
+              : "Dark theme"
           }
         >
           {theme === "dark"
-            ? "☀"
-            : "☾"}
+            ? "☼"
+            : "◐"}
         </button>
 
-        <span className="version">
-          V0.3
+        <span
+          className="version"
+          aria-label="TCA version 0.4"
+        >
+          v0.4
         </span>
-      </div>
+      </nav>
     </header>
   );
 }
-
-

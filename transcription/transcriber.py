@@ -1,5 +1,8 @@
+import json
 import os
+import re
 import time
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -8,7 +11,9 @@ from google import genai
 
 load_dotenv()
 
-API_KEY = os.getenv("GEMINI_API_KEY")
+API_KEY = os.getenv(
+    "GEMINI_API_KEY"
+)
 
 if not API_KEY:
     raise RuntimeError(
@@ -29,8 +34,12 @@ client = genai.Client(
 )
 
 
-def is_daily_quota_error(error) -> bool:
-    message = str(error).lower()
+def is_daily_quota_error(
+    error,
+) -> bool:
+    message = str(
+        error
+    ).lower()
 
     markers = [
         "requestsperday",
@@ -44,8 +53,12 @@ def is_daily_quota_error(error) -> bool:
     )
 
 
-def is_temporary_gemini_error(error) -> bool:
-    message = str(error).lower()
+def is_temporary_gemini_error(
+    error,
+) -> bool:
+    message = str(
+        error
+    ).lower()
 
     markers = [
         "503",
@@ -102,7 +115,9 @@ def generate_with_retry(
         except Exception as error:
             last_error = error
 
-            if is_daily_quota_error(error):
+            if is_daily_quota_error(
+                error
+            ):
                 raise RuntimeError(
                     "Daily Gemini quota reached. "
                     "Your recording is safe. "
@@ -139,6 +154,99 @@ def generate_with_retry(
     )
 
 
+def _excluded_person_name_parts() -> set[str]:
+    return {
+        "Wednesday", "Thursday", "Friday",
+        "Monday", "Tuesday", "Saturday",
+        "Sunday", "January", "February",
+        "March", "April", "May", "June",
+        "July", "August", "September",
+        "October", "November", "December",
+        "Android", "WhatsApp", "TCA",
+        "Then", "They", "The", "This",
+        "That", "These", "Those",
+        "Me", "Them", "Remote", "Local",
+        "Speaker", "Call", "Conversation",
+    }
+
+
+def _is_plausible_person_name(
+    name: str,
+) -> bool:
+    cleaned = (
+        " ".join(
+            name.strip().split()
+        )
+    )
+
+    if not cleaned:
+        return False
+
+    if any(
+        part in _excluded_person_name_parts()
+        for part in cleaned.split()
+    ):
+        return False
+
+    return bool(
+        re.fullmatch(
+            r"[A-Z][a-z]{1,30}(?:\s+[A-Z][a-z]{1,30})?",
+            cleaned,
+        )
+    )
+
+
+def infer_remote_participant_name(
+    call_title: str | None,
+) -> str | None:
+    """
+    Extract a remote participant only when the call title gives
+    explicit evidence, such as "with Jose" or "- Jose".
+
+    The marker word itself is matched case-insensitively because the
+    title is user-entered. The captured name is normalized only when
+    the user typed it in lowercase; otherwise its original casing is
+    preserved.
+    """
+    if not call_title:
+        return None
+
+    title = " ".join(
+        call_title.strip().split()
+    )
+
+    patterns = [
+        r"\bwith\s+([A-Za-z][A-Za-z'’-]{1,30}(?:\s+[A-Za-z][A-Za-z'’-]{1,30})?)\s*$",
+        r"[-–—]\s*([A-Za-z][A-Za-z'’-]{1,30}(?:\s+[A-Za-z][A-Za-z'’-]{1,30})?)\s*$",
+    ]
+
+    for pattern in patterns:
+        match = re.search(
+            pattern,
+            title,
+            flags=re.IGNORECASE,
+        )
+
+        if not match:
+            continue
+
+        candidate = match.group(1).strip(
+            " .,:;!?-–—"
+        )
+
+        if not candidate:
+            continue
+
+        if candidate.islower():
+            candidate = candidate.title()
+
+        if _is_plausible_person_name(
+            candidate
+        ):
+            return candidate
+
+    return None
+
 def transcribe_audio(
     audio_path: Path,
     speaker_label: str,
@@ -166,7 +274,7 @@ def transcribe_audio(
     prompt = f"""
 Transcribe this call audio accurately.
 
-Speaker:
+Speaker role:
 {speaker_label}
 
 Rules:
@@ -179,6 +287,7 @@ Rules:
 - Remove meaningless filler only when it adds no value.
 - If something is genuinely impossible to hear, write [inaudible].
 - Do not repeatedly label the speaker.
+- Never change the speaker's role or identity.
 """
 
     response = generate_with_retry(
@@ -201,7 +310,14 @@ Rules:
 def create_combined_transcript(
     my_transcript: str,
     their_transcript: str,
+    remote_participant_name: str | None = None,
 ) -> str:
+    remote_label = (
+        f"THEM / {remote_participant_name}"
+        if remote_participant_name
+        else "THEM / REMOTE SPEAKER"
+    )
+
     return f"""
 ============================================================
 ME / LOCAL SPEAKER
@@ -211,115 +327,167 @@ ME / LOCAL SPEAKER
 
 
 ============================================================
-THEM / REMOTE SPEAKER
+{remote_label}
 ============================================================
 
 {their_transcript}
 """.strip()
 
 
+def create_structured_transcript(
+    my_transcript: str,
+    their_transcript: str,
+    call_title: str | None = None,
+    remote_participant_name: str | None = None,
+) -> dict:
+    participants = [
+        {
+            "role": "me",
+            "name": None,
+            "source": "local-speaker",
+        },
+        {
+            "role": "them",
+            "name": remote_participant_name,
+            "source": (
+                "call-title"
+                if remote_participant_name
+                else None
+            ),
+        },
+    ]
+
+    return {
+        "call_title": call_title,
+        "participants": participants,
+        "turns": [
+            {
+                "speaker": "me",
+                "text": my_transcript,
+            },
+            {
+                "speaker": "them",
+                "text": their_transcript,
+            },
+        ],
+    }
+
+
 def transcribe_call(
     call_directory: str | Path,
+    call_title: str | None = None,
     status_callback=None,
 ) -> dict:
     call_directory = Path(
         call_directory
     )
 
-    mic_audio = (
-        call_directory
-        / "mic_raw.wav"
-    )
-
-    system_audio = (
-        call_directory
-        / "system_raw.wav"
-    )
+    mic_audio = call_directory / "mic_raw.wav"
+    system_audio = call_directory / "system_raw.wav"
 
     my_transcript_file = (
-        call_directory
-        / "my_transcript.txt"
+        call_directory / "my_transcript.txt"
     )
-
     their_transcript_file = (
-        call_directory
-        / "their_transcript.txt"
+        call_directory / "their_transcript.txt"
     )
-
     combined_file = (
-        call_directory
-        / "combined_transcript.txt"
+        call_directory / "combined_transcript.txt"
+    )
+    structured_file = (
+        call_directory / "transcript.json"
     )
 
+    remote_participant_name = (
+        infer_remote_participant_name(call_title)
+    )
+
+    their_label = (
+        f"THEM / {remote_participant_name}"
+        if remote_participant_name
+        else "THEM / REMOTE SPEAKER"
+    )
+
+    # Mic and system recordings are independent. Run exactly two
+    # transcription requests concurrently; never transcribe either
+    # side a second time.
     if status_callback:
         status_callback(
-            "Transcribing your side of the call..."
+            "Transcribing both sides of the call..."
         )
 
-    my_transcript = transcribe_audio(
-        audio_path=mic_audio,
-        speaker_label="ME / LOCAL SPEAKER",
-        status_callback=status_callback,
-    )
+    with ThreadPoolExecutor(
+        max_workers=2,
+        thread_name_prefix="tca-transcription",
+    ) as executor:
+        my_future = executor.submit(
+            transcribe_audio,
+            audio_path=mic_audio,
+            speaker_label="ME / LOCAL SPEAKER",
+            status_callback=status_callback,
+        )
+        their_future = executor.submit(
+            transcribe_audio,
+            audio_path=system_audio,
+            speaker_label=their_label,
+            status_callback=status_callback,
+        )
+
+        my_transcript = my_future.result()
+        their_transcript = their_future.result()
 
     my_transcript_file.write_text(
         my_transcript,
         encoding="utf-8",
     )
-
-    if status_callback:
-        status_callback(
-            "Transcribing the other side..."
-        )
-
-    their_transcript = transcribe_audio(
-        audio_path=system_audio,
-        speaker_label="THEM / REMOTE SPEAKER",
-        status_callback=status_callback,
-    )
-
     their_transcript_file.write_text(
         their_transcript,
         encoding="utf-8",
     )
 
-    combined_transcript = (
-        create_combined_transcript(
-            my_transcript,
-            their_transcript,
-        )
+    combined_transcript = create_combined_transcript(
+        my_transcript,
+        their_transcript,
+        remote_participant_name,
     )
-
     combined_file.write_text(
         combined_transcript,
         encoding="utf-8",
     )
 
-    print(
-        f"Saved transcript to: "
-        f"{combined_file}"
+    structured_transcript = create_structured_transcript(
+        my_transcript=my_transcript,
+        their_transcript=their_transcript,
+        call_title=call_title,
+        remote_participant_name=remote_participant_name,
     )
+    structured_file.write_text(
+        json.dumps(
+            structured_transcript,
+            indent=4,
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+
+    print(f"Saved transcript to: {combined_file}")
+    print(f"Saved structured transcript to: {structured_file}")
 
     return {
         "my_transcript": my_transcript,
         "their_transcript": their_transcript,
-        "combined_transcript": (
-            combined_transcript
-        ),
-        "my_transcript_file": str(
-            my_transcript_file
-        ),
-        "their_transcript_file": str(
-            their_transcript_file
-        ),
-        "combined_transcript_file": str(
-            combined_file
-        ),
+        "combined_transcript": combined_transcript,
+        "structured_transcript": structured_transcript,
+        "remote_participant_name": remote_participant_name,
+        "my_transcript_file": str(my_transcript_file),
+        "their_transcript_file": str(their_transcript_file),
+        "combined_transcript_file": str(combined_file),
+        "structured_transcript_file": str(structured_file),
     }
 
 
 if __name__ == "__main__":
     raise SystemExit(
-        "V2 transcription is call-specific. "
+        "V0.4 transcription is call-specific. "
         "Run it through the TCA backend."
     )

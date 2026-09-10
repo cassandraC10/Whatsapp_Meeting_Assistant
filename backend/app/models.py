@@ -28,6 +28,15 @@ class CreateCallRequest(
     )
 
 
+class UpdateCallRequest(
+    BaseModel
+):
+    title: str = Field(
+        min_length=1,
+        max_length=120,
+    )
+
+
 class Call(
     BaseModel
 ):
@@ -103,7 +112,58 @@ class Task(
         default=None,
         max_length=200,
     )
+    owner_name: str | None = Field(
+        default=None,
+        max_length=120,
+    )
     completed: bool = False
+
+
+class ParticipantRole(
+    str,
+    Enum,
+):
+    ME = "me"
+    THEM = "them"
+
+
+class Participant(
+    BaseModel
+):
+    role: ParticipantRole
+    name: str | None = Field(
+        default=None,
+        max_length=120,
+    )
+    source: str | None = Field(
+        default=None,
+        max_length=120,
+    )
+
+
+class SpeakerTurn(
+    BaseModel
+):
+    speaker: ParticipantRole
+    text: str = Field(
+        min_length=1,
+    )
+
+
+class StructuredTranscript(
+    BaseModel
+):
+    call_title: str | None = None
+    participants: list[
+        Participant
+    ] = Field(
+        default_factory=list
+    )
+    turns: list[
+        SpeakerTurn
+    ] = Field(
+        default_factory=list
+    )
 
 
 class UpdateTaskRequest(

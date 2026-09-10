@@ -1,5 +1,6 @@
 import json
 import os
+import re
 import time
 from pathlib import Path
 
@@ -42,11 +43,20 @@ class ActionItem(BaseModel):
         )
     )
 
-    deadline: str | None = Field(
+    deadline: str = Field(
+        description=(
+            "A grounded deadline explicitly stated or "
+            "unambiguously established in the conversation. "
+            "Every action item must have one."
+        ),
+    )
+
+    owner_name: str | None = Field(
         default=None,
         description=(
-            "Deadline if clearly mentioned. "
-            "Otherwise null."
+            "The person's name only when it is "
+            "explicitly known from the supplied context "
+            "or transcript. Otherwise null."
         ),
     )
 
@@ -57,6 +67,30 @@ class Decision(BaseModel):
             "A decision clearly reached "
             "during the conversation."
         )
+    )
+
+
+class Participant(BaseModel):
+    role: str = Field(
+        description=(
+            "Either 'me' or 'them'."
+        )
+    )
+
+    name: str | None = Field(
+        default=None,
+        description=(
+            "Known participant name. Null when "
+            "the identity is not established."
+        ),
+    )
+
+    source: str | None = Field(
+        default=None,
+        description=(
+            "Evidence source such as call-title, "
+            "transcript, or null."
+        ),
     )
 
 
@@ -73,6 +107,15 @@ class ConversationNotes(BaseModel):
             "A concise summary of the whole "
             "conversation."
         )
+    )
+
+    participants: list[Participant] = Field(
+        default_factory=list,
+        description=(
+            "The two conversation participants. "
+            "Use the supplied participant context when "
+            "available. Never invent a person's identity."
+        ),
     )
 
     key_points: list[str] = Field(
@@ -227,8 +270,276 @@ def generate_notes_with_retry(
     )
 
 
+def _clean_known_name(
+    name: str | None,
+) -> str | None:
+    if not name:
+        return None
+
+    cleaned = (
+        " ".join(
+            str(name).strip().split()
+        )
+    )
+
+    if not cleaned:
+        return None
+
+    return cleaned
+
+
+def _participant_from_context(
+    remote_participant_name: str | None,
+) -> list[dict]:
+    return [
+        {
+            "role": "me",
+            "name": None,
+            "source": "local-speaker",
+        },
+        {
+            "role": "them",
+            "name": (
+                _clean_known_name(
+                    remote_participant_name
+                )
+            ),
+            "source": (
+                "call-title"
+                if remote_participant_name
+                else None
+            ),
+        },
+    ]
+
+
+def _name_appears_in_text(
+    name: str,
+    transcript: str,
+) -> bool:
+    parts = [
+        re.escape(
+            part
+        )
+        for part in name.split()
+    ]
+
+    pattern = (
+        r"\b"
+        + r"\s+".join(parts)
+        + r"\b"
+    )
+
+    return bool(
+        re.search(
+            pattern,
+            transcript,
+            flags=re.IGNORECASE,
+        )
+    )
+
+
+def _normalise_date_text(
+    value: str,
+) -> str:
+    return (
+        " ".join(
+            value.strip().casefold().split()
+        )
+        .replace("–", "-")
+        .replace("—", "-")
+    )
+
+
+def _filter_undated_action_items(
+    notes: ConversationNotes,
+) -> None:
+    notes.my_action_items = [
+        item
+        for item in notes.my_action_items
+        if item.deadline
+        and item.deadline.strip()
+    ]
+
+    notes.their_action_items = [
+        item
+        for item in notes.their_action_items
+        if item.deadline
+        and item.deadline.strip()
+    ]
+
+
+def _filter_other_timing(
+    notes: ConversationNotes,
+) -> None:
+    action_deadlines = {
+        _normalise_date_text(item.deadline)
+        for item in (
+            notes.my_action_items
+            + notes.their_action_items
+        )
+        if item.deadline
+        and item.deadline.strip()
+    }
+
+    filtered: list[str] = []
+
+    for value in notes.important_dates:
+        cleaned = str(value or "").strip()
+
+        if not cleaned:
+            continue
+
+        if (
+            _normalise_date_text(cleaned)
+            in action_deadlines
+        ):
+            continue
+
+        if cleaned not in filtered:
+            filtered.append(cleaned)
+
+    notes.important_dates = filtered
+
+
+def _sanitize_notes(
+    notes: ConversationNotes,
+    transcript: str,
+    call_title: str | None,
+    remote_participant_name: str | None,
+) -> ConversationNotes:
+    known_name = _clean_known_name(
+        remote_participant_name
+    )
+
+    participants = (
+        _participant_from_context(
+            known_name
+        )
+    )
+
+    # A name supplied by the call title is authoritative.
+    # We never replace it with a model guess.
+    if known_name:
+        notes.participants = [
+            Participant(
+                role="me",
+                name=None,
+                source="local-speaker",
+            ),
+            Participant(
+                role="them",
+                name=known_name,
+                source="call-title",
+            ),
+        ]
+    else:
+        # Without explicit identity context, only retain model
+        # names that are visibly present in the transcript.
+        safe_participants: list[Participant] = [
+            Participant(
+                role="me",
+                name=None,
+                source="local-speaker",
+            )
+        ]
+
+        for participant in notes.participants:
+            role = (
+                str(
+                    participant.role
+                    or ""
+                ).casefold()
+            )
+
+            candidate = _clean_known_name(
+                participant.name
+            )
+
+            if (
+                role != "them"
+                or not candidate
+                or not _name_appears_in_text(
+                    candidate,
+                    transcript,
+                )
+            ):
+                continue
+
+            safe_participants.append(
+                Participant(
+                    role="them",
+                    name=candidate,
+                    source="transcript",
+                )
+            )
+            break
+
+        if len(safe_participants) == 1:
+            safe_participants.append(
+                Participant(
+                    role="them",
+                    name=None,
+                    source=None,
+                )
+            )
+
+        notes.participants = safe_participants
+
+    effective_remote_name = (
+        known_name
+        or next(
+            (
+                participant.name
+                for participant in notes.participants
+                if (
+                    participant.role.casefold()
+                    == "them"
+                    and participant.name
+                )
+            ),
+            None,
+        )
+    )
+
+    sanitized_their_items: list[ActionItem] = []
+
+    for item in notes.their_action_items:
+        item.owner_name = (
+            effective_remote_name
+        )
+        sanitized_their_items.append(
+            item
+        )
+
+    notes.their_action_items = (
+        sanitized_their_items
+    )
+
+    for item in notes.my_action_items:
+        item.owner_name = None
+
+    # The title generated by the model should not erase a useful
+    # explicit call title. We only fall back when the model returns
+    # an empty title.
+    if not notes.title.strip():
+        notes.title = (
+            call_title.strip()
+            if call_title
+            and call_title.strip()
+            else "Untitled call"
+        )
+
+    _filter_undated_action_items(notes)
+    _filter_other_timing(notes)
+
+    return notes
+
+
 def generate_conversation_notes(
     transcript: str,
+    call_title: str | None = None,
+    remote_participant_name: str | None = None,
     status_callback=None,
 ) -> ConversationNotes:
     if not transcript.strip():
@@ -237,42 +548,92 @@ def generate_conversation_notes(
             "before notes can be generated."
         )
 
+    known_name = _clean_known_name(
+        remote_participant_name
+    )
+
+    context_lines = [
+        "CALL CONTEXT:",
+        (
+            f"Call title: {call_title.strip()}"
+            if call_title
+            and call_title.strip()
+            else "Call title: not provided."
+        ),
+        "Speaker roles:",
+        (
+            "ME = local TCA user."
+        ),
+        (
+            f"THEM = {known_name}. "
+            "This identity is explicitly supplied by "
+            "the call title and must be preserved."
+            if known_name
+            else
+            "THEM = remote speaker. "
+            "Their name is unknown unless the transcript "
+            "clearly establishes it."
+        ),
+        "",
+    ]
+
     prompt = f"""
-You are creating useful notes from a real conversation.
+You are creating useful memory from a real conversation.
 
-The transcript contains two participants:
-
-ME / LOCAL SPEAKER
-= the person using TCA.
-
-THEM / REMOTE SPEAKER
-= the other person on the call. They may be a client,
-friend, colleague, recruiter, collaborator, family member
-or anyone else.
+{chr(10).join(context_lines)}
 
 Create concise notes from the WHOLE conversation.
 
-Rules:
+Grounding rules:
 
-- Do not invent anything.
-- Do not focus only on business topics.
-- Capture meaningful feedback, opinions, concerns,
-  suggestions and context inside key_points.
-- Keep casual small talk out unless it adds useful context.
-- Do not force action items.
-- Do not force decisions.
-- Do not force dates.
-- Do not force follow-up.
-- Empty lists are completely acceptable.
-- Keep action ownership correct.
-- Do not assume someone accepted a task unless the
-  transcript supports it.
-- Preserve names, dates, amounts, preferences and
-  meaningful personal details accurately.
-- Keep relative dates such as "tomorrow" as spoken unless
-  the transcript clearly establishes the calendar date.
+- The transcript is the source of truth for what was said.
+- The supplied call context is the source of truth for known
+  participant identity.
+- Never invent a participant name.
+- Never turn generic words such as "they", "then", "the",
+  "this", "that", weekdays or months into people.
+- If the remote participant name is unknown, leave it null.
+- When the remote participant name is known, use that exact name
+  when referring to THEM in summary, key points, decisions or
+  action items. Do not replace a known person's name with
+  "they", "them", "the speaker" or another invented label.
+- Never invent a decision.
+- Never invent a task.
+- Never invent a deadline.
+- Never infer agreement when the transcript does not support it.
+- Preserve names, dates, amounts, preferences and meaningful
+  personal details accurately.
+- Keep relative dates such as "tomorrow" as spoken unless the
+  transcript clearly establishes the calendar date.
 - Avoid duplicates.
-- Keep the result natural and useful after the call.
+- Empty lists are completely acceptable.
+
+Conversation quality rules:
+
+- Do not focus only on business topics.
+- Capture meaningful feedback, opinions, concerns, suggestions
+  and useful context inside key_points.
+- Keep casual small talk out unless it adds useful context.
+- Keep action ownership correct.
+- A task belongs in my_action_items only when it clearly belongs
+  to ME.
+- A task belongs in their_action_items only when it clearly
+  belongs to THEM.
+- Do not force decisions or follow-up.
+- Every returned action item must have a grounded deadline.
+- If an action has no grounded deadline, do not return it as an
+  action item.
+- Put the deadline on the action item itself.
+- Do not repeat action-item deadlines in important_dates.
+
+Participant rules:
+
+- Always return a participant entry for ME.
+- Always return a participant entry for THEM.
+- For THEM, use the supplied name if one is explicitly provided.
+- Otherwise use null unless the transcript itself clearly
+  establishes a person's name.
+- For every non-null participant name, provide a truthful source.
 
 TRANSCRIPT:
 
@@ -299,11 +660,20 @@ TRANSCRIPT:
             "No conversation notes were returned."
         )
 
-    return (
+    notes = (
         ConversationNotes
         .model_validate_json(
             response.text
         )
+    )
+
+    return _sanitize_notes(
+        notes=notes,
+        transcript=transcript,
+        call_title=call_title,
+        remote_participant_name=(
+            remote_participant_name
+        ),
     )
 
 
@@ -342,6 +712,12 @@ def format_action_items(
     for item in items:
         line = f"- {item.task}"
 
+        if item.owner_name:
+            line = (
+                f"- {item.owner_name}: "
+                f"{item.task}"
+            )
+
         if item.deadline:
             line += (
                 f" (Due: {item.deadline})"
@@ -360,6 +736,16 @@ TCA — THE CALL ASSISTANT
 
 {notes.title}
 
+PARTICIPANTS
+{format_list([
+    (
+        f"{item.role}: {item.name}"
+        if item.name
+        else item.role
+    )
+    for item in notes.participants
+])}
+
 SUMMARY
 {notes.summary}
 
@@ -375,8 +761,8 @@ THEIR NEXT STEPS
 DECISIONS
 {format_decisions(notes.decisions)}
 
-IMPORTANT DATES
-{format_list(notes.important_dates)}
+{"OTHER TIMING" if notes.important_dates else ""}
+{format_list(notes.important_dates) if notes.important_dates else ""}
 
 FOLLOW-UP
 {notes.follow_up or "None."}
@@ -385,6 +771,8 @@ FOLLOW-UP
 
 def summarize_call(
     call_directory: str | Path,
+    call_title: str | None = None,
+    remote_participant_name: str | None = None,
     status_callback=None,
 ) -> tuple[
     ConversationNotes,
@@ -426,6 +814,10 @@ def summarize_call(
 
     notes = generate_conversation_notes(
         transcript=transcript,
+        call_title=call_title,
+        remote_participant_name=(
+            remote_participant_name
+        ),
         status_callback=status_callback,
     )
 
@@ -472,6 +864,6 @@ def summarize_call(
 
 if __name__ == "__main__":
     raise SystemExit(
-        "V2 notes are call-specific. "
+        "V0.4 notes are call-specific. "
         "Run them through the TCA backend."
     )

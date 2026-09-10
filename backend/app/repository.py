@@ -101,6 +101,60 @@ class CallRepository:
             encoding="utf-8",
         )
 
+    def update_title(
+        self,
+        call_id: str,
+        title: str,
+    ) -> Call | None:
+        call = self.get(
+            call_id
+        )
+
+        if call is None:
+            return None
+
+        cleaned_title = title.strip()
+
+        if not cleaned_title:
+            raise ValueError(
+                "Call title cannot be empty."
+            )
+
+        call.title = cleaned_title
+        self.save(call)
+
+        notes_file = (
+            self._call_directory(call_id)
+            / "notes.json"
+        )
+
+        if notes_file.exists():
+            try:
+                notes = json.loads(
+                    notes_file.read_text(
+                        encoding="utf-8"
+                    )
+                )
+
+                if isinstance(notes, dict):
+                    notes["title"] = cleaned_title
+                    notes_file.write_text(
+                        json.dumps(
+                            notes,
+                            indent=4,
+                            ensure_ascii=False,
+                        ),
+                        encoding="utf-8",
+                    )
+            except (
+                json.JSONDecodeError,
+                OSError,
+            ):
+                pass
+
+        return call
+
+
     def get(
         self,
         call_id: str,
@@ -528,7 +582,7 @@ class CallRepository:
                 )
 
                 if not deadline:
-                    deadline = None
+                    continue
 
                 stable_key = (
                     f"tca-task:{call_id}:"
@@ -549,6 +603,15 @@ class CallRepository:
                         owner=owner,
                         task=task_text,
                         deadline=deadline,
+                        owner_name=(
+                            str(
+                                item.get(
+                                    "owner_name"
+                                )
+                                or ""
+                            ).strip()
+                            or None
+                        ),
                         completed=False,
                     )
                 )
@@ -713,21 +776,121 @@ class CallRepository:
         )
 
     def _extract_people(self, call: Call) -> list[str]:
+        """
+        Prefer structured participant memory produced by the
+        V0.4 processing pipeline. Keep the deterministic V3
+        extraction as a compatibility fallback for older calls.
+        """
+        call_directory = self._call_directory(call.id)
+
+        notes_file = call_directory / "notes.json"
+        if notes_file.exists():
+            try:
+                notes = json.loads(
+                    notes_file.read_text(
+                        encoding="utf-8"
+                    )
+                )
+            except (
+                json.JSONDecodeError,
+                OSError,
+            ):
+                notes = {}
+
+            structured_names: list[str] = []
+            participants = notes.get(
+                "participants",
+                [],
+            )
+
+            if isinstance(
+                participants,
+                list,
+            ):
+                for participant in participants:
+                    if not isinstance(
+                        participant,
+                        dict,
+                    ):
+                        continue
+
+                    role = str(
+                        participant.get(
+                            "role",
+                            "",
+                        )
+                        or ""
+                    ).casefold()
+
+                    name = str(
+                        participant.get(
+                            "name",
+                            "",
+                        )
+                        or ""
+                    ).strip()
+
+                    if (
+                        role == "them"
+                        and name
+                        and self._is_plausible_person_name(
+                            name
+                        )
+                    ):
+                        structured_names.append(
+                            name
+                        )
+
+            if structured_names:
+                return list(
+                    dict.fromkeys(
+                        structured_names
+                    )
+                )
+
+        return self._extract_people_legacy(
+            call
+        )
+
+    def _extract_people_legacy(
+        self,
+        call: Call,
+    ) -> list[str]:
         call_directory = self._call_directory(call.id)
         texts = [call.title]
 
         notes_file = call_directory / "notes.json"
         if notes_file.exists():
             try:
-                notes = json.loads(notes_file.read_text(encoding="utf-8"))
-            except (json.JSONDecodeError, OSError):
+                notes = json.loads(
+                    notes_file.read_text(
+                        encoding="utf-8"
+                    )
+                )
+            except (
+                json.JSONDecodeError,
+                OSError,
+            ):
                 notes = {}
-            texts.extend(self._flatten_person_text(notes))
 
-        transcript_file = call_directory / "combined_transcript.txt"
+            texts.extend(
+                self._flatten_person_text(
+                    notes
+                )
+            )
+
+        transcript_file = (
+            call_directory
+            / "combined_transcript.txt"
+        )
+
         if transcript_file.exists():
             try:
-                texts.append(transcript_file.read_text(encoding="utf-8"))
+                texts.append(
+                    transcript_file.read_text(
+                        encoding="utf-8"
+                    )
+                )
             except OSError:
                 pass
 
@@ -738,21 +901,84 @@ class CallRepository:
             r"\b([A-Z][a-z]{1,30})\s+(?:said|noted|will|agreed|highlighted|committed|mentioned)\b",
             r"\b([A-Z][a-z]{1,30})\s+(?:is|was)\s+the\s+(?:one|person)\b",
         ]
-        excluded = {
-            "Wednesday", "Thursday", "Friday", "Monday", "Tuesday", "Saturday", "Sunday",
-            "January", "February", "March", "April", "May", "June", "July", "August",
-            "September", "October", "November", "December", "Android", "WhatsApp", "TCA",
-            "Then", "They", "The", "This", "That", "These", "Those",
-        }
+
+        excluded = self._excluded_person_names()
+
         for text in texts:
             for pattern in patterns:
-                for match in re.finditer(pattern, text):
+                for match in re.finditer(
+                    pattern,
+                    text,
+                ):
                     name = match.group(1).strip()
-                    if name in excluded or len(name) < 2:
+
+                    if (
+                        name in excluded
+                        or len(name) < 2
+                    ):
                         continue
+
+                    if not self._is_plausible_person_name(
+                        name
+                    ):
+                        continue
+
                     key = name.casefold()
-                    found.setdefault(key, name)
-        return list(found.values())
+                    found.setdefault(
+                        key,
+                        name,
+                    )
+
+        return list(
+            found.values()
+        )
+
+    def _is_plausible_person_name(
+        self,
+        name: str,
+    ) -> bool:
+        cleaned = (
+            " ".join(
+                name.strip().split()
+            )
+        )
+
+        if not cleaned:
+            return False
+
+        if any(
+            character.isdigit()
+            for character in cleaned
+        ):
+            return False
+
+        if any(
+            part in self._excluded_person_names()
+            for part in cleaned.split()
+        ):
+            return False
+
+        return bool(
+            re.fullmatch(
+                r"[A-Z][a-z]{1,30}(?:\s+[A-Z][a-z]{1,30})?",
+                cleaned,
+            )
+        )
+
+    def _excluded_person_names(self) -> set[str]:
+        return {
+            "Wednesday", "Thursday", "Friday",
+            "Monday", "Tuesday", "Saturday",
+            "Sunday", "January", "February",
+            "March", "April", "May", "June",
+            "July", "August", "September",
+            "October", "November", "December",
+            "Android", "WhatsApp", "TCA",
+            "Then", "They", "The", "This",
+            "That", "These", "Those",
+            "Me", "Them", "Remote", "Local",
+            "Speaker", "Call", "Conversation",
+        }
 
     def _flatten_person_text(self, value) -> list[str]:
         if isinstance(value, str):

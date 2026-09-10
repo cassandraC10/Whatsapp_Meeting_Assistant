@@ -24,6 +24,7 @@ import {
   startCallRecording,
   getCallTasks,
   updateCallTask,
+  updateCallTitle,
   deleteCallTask,
   getPeople,
   getPerson,
@@ -311,23 +312,6 @@ function buildShareableNotes(
   }
 
   if (
-    notes
-      .important_dates
-      .length > 0
-  ) {
-    sections.push(
-      "\n*Important dates*\n"
-      + notes
-        .important_dates
-        .map(
-          (item) =>
-            `• ${item}`
-        )
-        .join("\n")
-    );
-  }
-
-  if (
     notes.follow_up
   ) {
     sections.push(
@@ -405,7 +389,7 @@ function formatMatchLabel(
       "Their next steps",
 
     important_dates:
-      "Important dates",
+      "Other timing",
 
     follow_up:
       "Follow-up",
@@ -552,6 +536,21 @@ function App() {
   const [
     deletingCall,
     setDeletingCall,
+  ] = useState(false);
+
+  const [
+    editingCallTitle,
+    setEditingCallTitle,
+  ] = useState(false);
+
+  const [
+    callTitleDraft,
+    setCallTitleDraft,
+  ] = useState("");
+
+  const [
+    savingCallTitle,
+    setSavingCallTitle,
   ] = useState(false);
 
 
@@ -1356,6 +1355,93 @@ function App() {
       setLoadingDetail(
         false
       );
+    }
+  }
+
+
+  function beginEditCallTitle() {
+    if (!selectedCall) {
+      return;
+    }
+
+    setCallTitleDraft(
+      selectedCall.title
+    );
+
+    setDetailError("");
+    setEditingCallTitle(true);
+  }
+
+
+  function cancelEditCallTitle() {
+    setCallTitleDraft(
+      selectedCall?.title
+      || ""
+    );
+
+    setEditingCallTitle(false);
+  }
+
+
+  async function saveCallTitle() {
+    if (
+      !selectedCall
+      || savingCallTitle
+    ) {
+      return;
+    }
+
+    const cleanTitle =
+      callTitleDraft.trim();
+
+    if (!cleanTitle) {
+      setDetailError(
+        "Call title cannot be empty."
+      );
+      return;
+    }
+
+    setSavingCallTitle(true);
+    setDetailError("");
+
+    try {
+      const updatedCall =
+        await updateCallTitle(
+          selectedCall.id,
+          cleanTitle
+        );
+
+      setSelectedCall(
+        updatedCall
+      );
+
+      updateCallInList(
+        updatedCall
+      );
+
+      setSelectedNotes(
+        (current) =>
+          current
+            ? {
+                ...current,
+                title:
+                  updatedCall.title,
+              }
+            : current
+      );
+
+      setEditingCallTitle(false);
+      setActionMessage(
+        "Call title updated."
+      );
+    } catch (error) {
+      setDetailError(
+        error instanceof Error
+          ? error.message
+          : "Could not update the call title."
+      );
+    } finally {
+      setSavingCallTitle(false);
     }
   }
 
@@ -2603,6 +2689,27 @@ function App() {
         onWhatsApp={
           shareToWhatsApp
         }
+        editingTitle={
+          editingCallTitle
+        }
+        titleDraft={
+          callTitleDraft
+        }
+        savingTitle={
+          savingCallTitle
+        }
+        onBeginEditTitle={
+          beginEditCallTitle
+        }
+        onTitleDraftChange={
+          setCallTitleDraft
+        }
+        onSaveTitle={
+          saveCallTitle
+        }
+        onCancelEditTitle={
+          cancelEditCallTitle
+        }
         onDelete={
           handleDeleteCall
         }
@@ -2638,96 +2745,60 @@ function App() {
       <section className="workspace">
         <div className="page-heading">
           <div>
+            <span className="section-label">
+              Capture
+            </span>
+
             <h1>
-              Calls
+              Capture what matters.
             </h1>
 
             <p>
-              Conversations worth
-              remembering.
+              TCA records the conversation,
+              then turns it into useful memory.
             </p>
           </div>
         </div>
 
 
-        <section className="conversation-search">
-          <span className="section-label">
-            Find a conversation
-          </span>
-
-          <div className="search-field">
-            <span
-              className="search-icon"
-              aria-hidden="true"
-            >
-              ⌕
-            </span>
-
-            <input
-              type="search"
-              value={
-                searchQuery
-              }
-              onChange={
-                (event) =>
-                  setSearchQuery(
-                    event.target.value
-                  )
-              }
-              placeholder={
-                "Search conversations"
-              }
-              aria-label={
-                "Search conversations"
-              }
-              autoComplete="off"
-            />
-
-            {searchActive && (
-              <button
-                type="button"
-                className="search-clear"
-                onClick={
-                  clearSearch
-                }
-                aria-label={
-                  "Clear search"
-                }
-              >
-                ×
-              </button>
-            )}
-          </div>
-        </section>
-
-
         {!searchActive && (
-          <>
-            <AskTcaEntry
-              onOpen={() =>
-                openAskView()
-              }
-            />
+          <section className="capture-panel">
+            <div className="capture-panel-copy">
+              <div className="capture-mark" aria-hidden="true">
+                <span />
+              </div>
+
+              <div>
+                <span className="section-label">
+                  Start here
+                </span>
+
+                <h2>
+                  Capture a conversation.
+                </h2>
+
+                <p>
+                  Add a title if you want.
+                  TCA will guide you through
+                  consent before recording starts.
+                </p>
+              </div>
+            </div>
 
             <form
-              className="call-composer"
+              className="capture-form"
               onSubmit={
                 handleSubmit
               }
             >
-              <div className="composer-copy">
-                <span className="section-label">
-                  New call
-                </span>
+              <label
+                htmlFor="call-title"
+                className="capture-title-label"
+              >
+                Title <span>Optional</span>
+              </label>
 
-                <label
-                  htmlFor="call-title"
-                >
-                  What is this call about?
-                </label>
-              </div>
-
-              <div className="composer-row">
+              <div className="capture-form-row">
                 <input
                   id="call-title"
                   value={
@@ -2736,35 +2807,109 @@ function App() {
                   onChange={
                     (event) =>
                       setTitle(
-                        event
-                          .target
-                          .value
+                        event.target.value
                       )
                   }
                   placeholder={
-                    "Product feedback "
-                    + "with Jane"
+                    "e.g. Product feedback with Jane"
                   }
                   maxLength={
                     120
                   }
+                  autoComplete="off"
                 />
 
                 <button
-                  className="primary-button"
+                  className="primary-button capture-button"
                   type="submit"
                   disabled={
                     creating
                   }
                 >
+                  <span
+                    className="capture-button-icon"
+                    aria-hidden="true"
+                  >
+                    ●
+                  </span>
+
                   {creating
-                    ? "Starting…"
-                    : "Start call"}
+                    ? "Opening…"
+                    : "Capture conversation"}
                 </button>
               </div>
             </form>
-          </>
+          </section>
         )}
+
+
+        <section className="find-section">
+          <div className="find-section-heading">
+            <div>
+              <span className="section-label">
+                Find
+              </span>
+
+              <h2>
+                Something you remember?
+              </h2>
+            </div>
+          </div>
+
+          <div className="conversation-search">
+            <div className="search-field">
+              <span
+                className="search-icon"
+                aria-hidden="true"
+              >
+                ⌕
+              </span>
+
+              <input
+                type="search"
+                value={
+                  searchQuery
+                }
+                onChange={
+                  (event) =>
+                    setSearchQuery(
+                      event.target.value
+                    )
+                }
+                placeholder={
+                  "Search conversations"
+                }
+                aria-label={
+                  "Search conversations"
+                }
+                autoComplete="off"
+              />
+
+              {searchActive && (
+                <button
+                  type="button"
+                  className="search-clear"
+                  onClick={
+                    clearSearch
+                  }
+                  aria-label={
+                    "Clear search"
+                  }
+                >
+                  ×
+                </button>
+              )}
+            </div>
+          </div>
+
+          {!searchActive && (
+            <AskTcaEntry
+              onOpen={() =>
+                openAskView()
+              }
+            />
+          )}
+        </section>
 
 
         {message
@@ -3938,6 +4083,27 @@ interface CallDetailProps {
   onWhatsApp:
     () => void;
 
+  editingTitle:
+    boolean;
+
+  titleDraft:
+    string;
+
+  savingTitle:
+    boolean;
+
+  onBeginEditTitle:
+    () => void;
+
+  onTitleDraftChange:
+    (value: string) => void;
+
+  onSaveTitle:
+    () => void;
+
+  onCancelEditTitle:
+    () => void;
+
   onDelete:
     () => void;
 }
@@ -3971,6 +4137,13 @@ function CallDetail({
   onCopy,
   onDownload,
   onWhatsApp,
+  editingTitle,
+  titleDraft,
+  savingTitle,
+  onBeginEditTitle,
+  onTitleDraftChange,
+  onSaveTitle,
+  onCancelEditTitle,
   onDelete,
 }: CallDetailProps) {
   const canDelete =
@@ -4013,9 +4186,83 @@ function CallDetail({
         </button>
 
         <header className="recap-header">
-          <h1>
-            {call.title}
-          </h1>
+          {editingTitle ? (
+            <div className="call-title-editor">
+              <label
+                htmlFor="detail-call-title"
+                className="sr-only"
+              >
+                Call title
+              </label>
+
+              <input
+                id="detail-call-title"
+                className="call-title-input"
+                value={titleDraft}
+                onChange={(event) =>
+                  onTitleDraftChange(
+                    event.target.value
+                  )
+                }
+                maxLength={120}
+                autoFocus
+                disabled={savingTitle}
+                onKeyDown={(event) => {
+                  if (
+                    event.key === "Enter"
+                  ) {
+                    event.preventDefault();
+                    onSaveTitle();
+                  }
+
+                  if (
+                    event.key === "Escape"
+                  ) {
+                    event.preventDefault();
+                    onCancelEditTitle();
+                  }
+                }}
+              />
+
+              <div className="call-title-editor-actions">
+                <button
+                  type="button"
+                  className="primary-button"
+                  onClick={onSaveTitle}
+                  disabled={savingTitle}
+                >
+                  {savingTitle
+                    ? "Saving…"
+                    : "Save"}
+                </button>
+
+                <button
+                  type="button"
+                  className="secondary-button"
+                  onClick={onCancelEditTitle}
+                  disabled={savingTitle}
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="recap-title-row">
+              <h1>
+                {call.title}
+              </h1>
+
+              <button
+                type="button"
+                className="edit-title-button"
+                onClick={onBeginEditTitle}
+                aria-label="Edit call title"
+                title="Edit call title"
+              >
+                ✎
+              </button>
+            </div>
+          )}
 
           <div className="recap-meta">
             <span>
@@ -4045,6 +4292,29 @@ function CallDetail({
               {call.status}
             </span>
           </div>
+          {notes
+            && notes.participants
+            && notes.participants.length > 0
+            && (() => {
+              const remoteParticipant = notes.participants.find(
+                (participant) =>
+                  participant.role === "them"
+                  && participant.name
+              );
+
+              if (!remoteParticipant?.name) {
+                return null;
+              }
+
+              return (
+                <div className="recap-participants">
+                  <span>With</span>
+                  <strong>
+                    {remoteParticipant.name}
+                  </strong>
+                </div>
+              );
+            })()}
         </header>
 
         {loading && (
@@ -4218,7 +4488,7 @@ function CallDetail({
                 .length > 0
                 && (
                   <ListSection
-                    title="Important dates"
+                    title="Other timing"
                     items={
                       notes
                         .important_dates

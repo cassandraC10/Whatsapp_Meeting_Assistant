@@ -10,6 +10,7 @@ from backend.app.models import (
     Call,
     CallStatus,
     CreateCallRequest,
+    UpdateCallRequest,
     PersonDetail,
     PeopleResponse,
     Task,
@@ -26,7 +27,7 @@ app = FastAPI(
         "Backend API for "
         "TCA — The Call Assistant"
     ),
-    version="0.3.0",
+    version="0.4.0",
 )
 
 
@@ -112,7 +113,7 @@ def health_check():
     return {
         "status": "ok",
         "service": "TCA API",
-        "version": "0.3.0",
+        "version": "0.4.0",
     }
 
 
@@ -241,6 +242,40 @@ def get_call(
     return require_call(
         call_id
     )
+
+
+@app.patch(
+    "/calls/{call_id}",
+    response_model=Call,
+)
+def update_call(
+    call_id: str,
+    request: UpdateCallRequest,
+):
+    require_call(
+        call_id
+    )
+
+    try:
+        updated_call = (
+            call_repository.update_title(
+                call_id=call_id,
+                title=request.title,
+            )
+        )
+    except ValueError as error:
+        raise HTTPException(
+            status_code=400,
+            detail=str(error),
+        ) from error
+
+    if updated_call is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Call not found.",
+        )
+
+    return updated_call
 
 
 @app.get(
