@@ -862,6 +862,132 @@ def summarize_call(
     )
 
 
+class FollowUpDraft(BaseModel):
+    message: str = Field(
+        description=(
+            "A concise follow-up message grounded only in "
+            "the supplied conversation memory."
+        )
+    )
+
+
+def generate_follow_up(
+    call_directory: str | Path,
+    call_title: str | None = None,
+    recipient_name: str | None = None,
+    status_callback=None,
+) -> str:
+    """Generate a reviewable follow-up from the saved conversation."""
+    call_directory = Path(call_directory)
+
+    transcript_file = call_directory / "combined_transcript.txt"
+    notes_file = call_directory / "notes.json"
+
+    if not transcript_file.exists():
+        raise RuntimeError(
+            "No transcript exists for this call. "
+            "A follow-up cannot be generated."
+        )
+
+    if not notes_file.exists():
+        raise RuntimeError(
+            "No notes exist for this call. "
+            "A follow-up cannot be generated."
+        )
+
+    transcript = transcript_file.read_text(
+        encoding="utf-8"
+    ).strip()
+
+    try:
+        notes = json.loads(
+            notes_file.read_text(
+                encoding="utf-8"
+            )
+        )
+    except (json.JSONDecodeError, OSError) as error:
+        raise RuntimeError(
+            "Saved conversation notes could not be read."
+        ) from error
+
+    if not transcript:
+        raise RuntimeError(
+            "The transcript is empty. "
+            "A follow-up cannot be generated."
+        )
+
+    known_recipient = _clean_known_name(recipient_name)
+
+    recipient_line = (
+        f"Recipient: {known_recipient}"
+        if known_recipient
+        else "Recipient: not explicitly known."
+    )
+
+    prompt = f"""
+You are drafting a follow-up message after a real conversation.
+
+Use ONLY the supplied saved conversation transcript and notes.
+Do not add facts, promises, dates, decisions, tasks, names or
+details that are not supported by the supplied evidence.
+
+CALL:
+{call_title or notes.get("title") or "Untitled call"}
+
+{recipient_line}
+
+STYLE:
+- Natural, concise and human.
+- Suitable to send as a direct message.
+- Mention only the most useful agreed next steps or recap points.
+- Preserve grounded deadlines when they matter.
+- If there are no agreed next steps, write a brief recap instead.
+- Do not invent a greeting name if the recipient is unknown.
+- Do not mention TCA, AI, transcription, notes or this prompt.
+- Do not claim that something was agreed unless the notes/transcript
+  support it.
+- Do not turn casual conversation into a task.
+- Return only the message text.
+
+SAVED NOTES:
+{json.dumps(notes, indent=2, ensure_ascii=False)}
+
+SAVED TRANSCRIPT:
+{transcript}
+"""
+
+    config = types.GenerateContentConfig(
+        response_mime_type="application/json",
+        response_schema=FollowUpDraft,
+    )
+
+    if status_callback:
+        status_callback("Drafting your follow-up...")
+
+    response = generate_notes_with_retry(
+        prompt=prompt,
+        config=config,
+        status_callback=status_callback,
+    )
+
+    if not response.text:
+        raise RuntimeError(
+            "No follow-up draft was returned."
+        )
+
+    draft = FollowUpDraft.model_validate_json(
+        response.text
+    )
+
+    message = draft.message.strip()
+    if not message:
+        raise RuntimeError(
+            "The follow-up draft was empty."
+        )
+
+    return message
+
+
 if __name__ == "__main__":
     raise SystemExit(
         "V0.4 notes are call-specific. "

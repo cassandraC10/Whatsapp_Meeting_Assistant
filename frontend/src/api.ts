@@ -158,6 +158,13 @@ export interface AskResponse {
 }
 
 
+export interface FollowUpResponse {
+  call_id: string;
+  recipient_name: string | null;
+  message: string;
+}
+
+
 
 
 async function request<T>(
@@ -414,6 +421,22 @@ export function getCallTranscript(
 ): Promise<TranscriptResponse> {
   return request<TranscriptResponse>(
     `/calls/${callId}/transcript`
+  );
+}
+
+
+export function generateCallFollowUp(
+  callId: string
+): Promise<FollowUpResponse> {
+  return request<FollowUpResponse>(
+    `/calls/${callId}/follow-up`,
+    {
+      method: "POST",
+      headers: {
+        "Accept":
+          "application/json",
+      },
+    }
   );
 }
 

@@ -3971,3 +3971,137 @@ input {
   color: var(--text-soft);
   font-weight: 650;
 }
+
+
+/* V0.4 Step 4 — grounded follow-up */
+.follow-up-section {
+  display: grid;
+  gap: 22px;
+}
+
+.follow-up-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 24px;
+}
+
+.follow-up-heading > div {
+  min-width: 0;
+}
+
+.follow-up-heading .section-label {
+  margin-bottom: 7px;
+}
+
+.follow-up-heading h2 {
+  margin: 0 0 8px;
+  color: var(--text);
+  font-size: 17px;
+  font-weight: 650;
+  letter-spacing: -0.02em;
+}
+
+.follow-up-heading p {
+  max-width: 580px;
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.follow-up-heading .secondary-button {
+  flex-shrink: 0;
+}
+
+.follow-up-editor {
+  display: grid;
+  gap: 12px;
+}
+
+.follow-up-recipient {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.follow-up-recipient strong {
+  color: var(--text-soft);
+  font-weight: 650;
+}
+
+.follow-up-editor textarea {
+  width: 100%;
+  min-height: 170px;
+  resize: vertical;
+  padding: 15px 16px;
+  border: 1px solid var(--line-light);
+  border-radius: var(--radius-sm);
+  outline: none;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: 14px;
+  line-height: 1.7;
+  transition:
+    border-color var(--transition-fast),
+    box-shadow var(--transition-fast);
+}
+
+.follow-up-editor textarea:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+.follow-up-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.follow-up-actions .primary-action {
+  min-width: 160px;
+}
+
+.follow-up-error {
+  margin-top: 0;
+}
+
+@media (max-width: 720px) {
+  .follow-up-heading {
+    flex-direction: column;
+    gap: 16px;
+  }
+
+  .follow-up-heading .secondary-button {
+    width: 100%;
+  }
+
+  .follow-up-editor textarea {
+    min-height: 190px;
+    font-size: 14px;
+  }
+
+  .follow-up-actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .follow-up-actions .primary-action {
+    grid-column: 1 / -1;
+  }
+
+  .follow-up-actions button {
+    width: 100%;
+  }
+}
+
+@media (max-width: 480px) {
+  .follow-up-actions {
+    grid-template-columns: 1fr;
+  }
+
+  .follow-up-actions .primary-action {
+    grid-column: auto;
+  }
+}

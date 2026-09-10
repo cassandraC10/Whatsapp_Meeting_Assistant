@@ -20,6 +20,7 @@ from backend.app.models import (
 from backend.app.processing_service import CallProcessingService
 from backend.app.recorder_manager import RecorderManager
 from backend.app.repository import CallRepository
+from intelligence.summarizer import generate_follow_up
 
 app = FastAPI(
     title="TCA API",
@@ -1019,6 +1020,85 @@ def process_call(
                 error
             ),
         ) from error
+
+
+@app.post(
+    "/calls/{call_id}/follow-up",
+)
+def generate_call_follow_up(
+    call_id: str,
+):
+    call = require_call(
+        call_id
+    )
+
+    if call.status != CallStatus.COMPLETED:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "Follow-up is only available "
+                "for completed conversations."
+            ),
+        )
+
+    call_directory = (
+        call_repository.get_directory(
+            call_id
+        )
+    )
+
+    recipient_name = None
+    notes_file = call_directory / "notes.json"
+
+    if notes_file.exists():
+        try:
+            notes = json.loads(
+                notes_file.read_text(
+                    encoding="utf-8"
+                )
+            )
+        except (json.JSONDecodeError, OSError):
+            notes = {}
+
+        participants = notes.get(
+            "participants",
+            [],
+        )
+
+        if isinstance(participants, list):
+            for participant in participants:
+                if not isinstance(participant, dict):
+                    continue
+
+                role = str(
+                    participant.get("role", "") or ""
+                ).casefold()
+
+                name = str(
+                    participant.get("name", "") or ""
+                ).strip()
+
+                if role == "them" and name:
+                    recipient_name = name
+                    break
+
+    try:
+        message = generate_follow_up(
+            call_directory=call_directory,
+            call_title=call.title,
+            recipient_name=recipient_name,
+        )
+    except RuntimeError as error:
+        raise HTTPException(
+            status_code=500,
+            detail=str(error),
+        ) from error
+
+    return {
+        "call_id": call_id,
+        "recipient_name": recipient_name,
+        "message": message,
+    }
 
 
 @app.get(

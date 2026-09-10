@@ -26,6 +26,7 @@ import {
   updateCallTask,
   updateCallTitle,
   deleteCallTask,
+  generateCallFollowUp,
   getPeople,
   getPerson,
 } from "./api";
@@ -553,6 +554,26 @@ function App() {
     setSavingCallTitle,
   ] = useState(false);
 
+  const [
+    followUpDraft,
+    setFollowUpDraft,
+  ] = useState("");
+
+  const [
+    followUpRecipient,
+    setFollowUpRecipient,
+  ] = useState<string | null>(null);
+
+  const [
+    generatingFollowUp,
+    setGeneratingFollowUp,
+  ] = useState(false);
+
+  const [
+    followUpError,
+    setFollowUpError,
+  ] = useState("");
+
 
   const [
     selectedTasks,
@@ -606,6 +627,13 @@ function App() {
     searchQuery
       .trim()
       .length > 0;
+
+
+  useEffect(() => {
+    setFollowUpDraft("");
+    setFollowUpRecipient(null);
+    setFollowUpError("");
+  }, [selectedCall?.id]);
 
 
   /*
@@ -2219,6 +2247,84 @@ function App() {
   }
 
 
+  async function generateFollowUpDraft() {
+    if (!selectedCall) {
+      return;
+    }
+
+    setGeneratingFollowUp(true);
+    setFollowUpError("");
+    setActionMessage("");
+
+    try {
+      const result =
+        await generateCallFollowUp(
+          selectedCall.id
+        );
+
+      setFollowUpRecipient(
+        result.recipient_name
+      );
+      setFollowUpDraft(
+        result.message
+      );
+    } catch (error) {
+      setFollowUpError(
+        error instanceof Error
+          ? error.message
+          : "Could not generate a follow-up."
+      );
+    } finally {
+      setGeneratingFollowUp(false);
+    }
+  }
+
+
+  async function copyFollowUp() {
+    if (!followUpDraft.trim()) {
+      return;
+    }
+
+    try {
+      await navigator.clipboard.writeText(
+        followUpDraft.trim()
+      );
+
+      setActionMessage(
+        "Follow-up copied."
+      );
+    } catch {
+      setActionMessage(
+        "Could not copy follow-up."
+      );
+    }
+  }
+
+
+  function shareFollowUpToWhatsApp() {
+    const message =
+      followUpDraft.trim();
+
+    if (!message) {
+      return;
+    }
+
+    const url =
+      "https://wa.me/?text="
+      + encodeURIComponent(message);
+
+    window.open(
+      url,
+      "_blank",
+      "noopener,noreferrer"
+    );
+
+    setActionMessage(
+      "WhatsApp opened with your follow-up."
+    );
+  }
+
+
   async function copyNotes() {
     if (
       !selectedCall
@@ -2688,6 +2794,30 @@ function App() {
         }
         onWhatsApp={
           shareToWhatsApp
+        }
+        followUpDraft={
+          followUpDraft
+        }
+        followUpRecipient={
+          followUpRecipient
+        }
+        generatingFollowUp={
+          generatingFollowUp
+        }
+        followUpError={
+          followUpError
+        }
+        onGenerateFollowUp={
+          generateFollowUpDraft
+        }
+        onFollowUpDraftChange={
+          setFollowUpDraft
+        }
+        onCopyFollowUp={
+          copyFollowUp
+        }
+        onShareFollowUp={
+          shareFollowUpToWhatsApp
         }
         editingTitle={
           editingCallTitle
@@ -4083,6 +4213,30 @@ interface CallDetailProps {
   onWhatsApp:
     () => void;
 
+  followUpDraft:
+    string;
+
+  followUpRecipient:
+    string | null;
+
+  generatingFollowUp:
+    boolean;
+
+  followUpError:
+    string;
+
+  onGenerateFollowUp:
+    () => void;
+
+  onFollowUpDraftChange:
+    (value: string) => void;
+
+  onCopyFollowUp:
+    () => void;
+
+  onShareFollowUp:
+    () => void;
+
   editingTitle:
     boolean;
 
@@ -4137,6 +4291,14 @@ function CallDetail({
   onCopy,
   onDownload,
   onWhatsApp,
+  followUpDraft,
+  followUpRecipient,
+  generatingFollowUp,
+  followUpError,
+  onGenerateFollowUp,
+  onFollowUpDraftChange,
+  onCopyFollowUp,
+  onShareFollowUp,
   editingTitle,
   titleDraft,
   savingTitle,
@@ -4507,6 +4669,99 @@ function CallDetail({
                   </p>
                 </section>
               )}
+
+              <section className="recap-section follow-up-section">
+                <div className="follow-up-heading">
+                  <div>
+                    <span className="section-label">
+                      Follow-up
+                    </span>
+
+                    <h2>
+                      Turn this conversation into a message.
+                    </h2>
+
+                    <p>
+                      TCA drafts a grounded follow-up from the saved conversation.
+                      Review it before sharing.
+                    </p>
+                  </div>
+
+                  {!followUpDraft && (
+                    <button
+                      type="button"
+                      className="secondary-button"
+                      onClick={onGenerateFollowUp}
+                      disabled={generatingFollowUp}
+                    >
+                      {generatingFollowUp
+                        ? "Generating…"
+                        : "Generate follow-up"}
+                    </button>
+                  )}
+                </div>
+
+                {followUpError && (
+                  <div className="notice notice-error follow-up-error">
+                    <strong>
+                      Could not generate the follow-up.
+                    </strong>
+
+                    <p>
+                      {followUpError}
+                    </p>
+                  </div>
+                )}
+
+                {followUpDraft && (
+                  <div className="follow-up-editor">
+                    {followUpRecipient && (
+                      <p className="follow-up-recipient">
+                        For <strong>{followUpRecipient}</strong>
+                      </p>
+                    )}
+
+                    <textarea
+                      value={followUpDraft}
+                      onChange={(event) =>
+                        onFollowUpDraftChange(
+                          event.target.value
+                        )
+                      }
+                      aria-label="Follow-up message"
+                    />
+
+                    <div className="follow-up-actions">
+                      <button
+                        type="button"
+                        className="action-button primary-action"
+                        onClick={onShareFollowUp}
+                      >
+                        Share to WhatsApp
+                      </button>
+
+                      <button
+                        type="button"
+                        className="action-button"
+                        onClick={onCopyFollowUp}
+                      >
+                        Copy
+                      </button>
+
+                      <button
+                        type="button"
+                        className="action-button"
+                        onClick={onGenerateFollowUp}
+                        disabled={generatingFollowUp}
+                      >
+                        {generatingFollowUp
+                          ? "Generating…"
+                          : "Regenerate"}
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </section>
 
               <section className="call-detail-ask">
                 <div>
