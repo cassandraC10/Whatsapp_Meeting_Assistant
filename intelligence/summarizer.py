@@ -134,7 +134,7 @@ class ConversationNotes(BaseModel):
     my_action_items: list[ActionItem] = Field(
         description=(
             "Next steps belonging to "
-            "ME / LOCAL SPEAKER."
+            "I / LOCAL SPEAKER."
         )
     )
 
@@ -562,7 +562,7 @@ def generate_conversation_notes(
         ),
         "Speaker roles:",
         (
-            "ME = local TCA user."
+            "I = local TCA user. Human-readable output should use I / my / me for the local speaker unless their name is explicitly established."
         ),
         (
             f"THEM = {known_name}. "
@@ -739,9 +739,13 @@ TCA — THE CALL ASSISTANT
 PARTICIPANTS
 {format_list([
     (
-        f"{item.role}: {item.name}"
+        f"{item.name}"
         if item.name
-        else item.role
+        else (
+            "I"
+            if item.role.casefold() == "me"
+            else "Them"
+        )
     )
     for item in notes.participants
 ])}

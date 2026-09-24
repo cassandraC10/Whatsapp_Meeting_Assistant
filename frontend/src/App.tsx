@@ -1,5 +1,6 @@
 import {
   useEffect,
+  useRef,
   useState,
 } from "react";
 
@@ -433,6 +434,9 @@ function App() {
     setTitle,
   ] = useState("");
 
+  const captureTitleRef =
+    useRef<HTMLInputElement>(null);
+
   const [
     loadingCalls,
     setLoadingCalls,
@@ -717,6 +721,36 @@ function App() {
 
   useEffect(() => {
     loadCalls();
+
+    const params =
+      new URLSearchParams(
+        window.location.search
+      );
+
+    const launchedForCapture =
+      params.get("capture")
+      === "1";
+
+    const standalone =
+      window.matchMedia(
+        "(display-mode: standalone)"
+      ).matches
+      || Boolean(
+        (navigator as Navigator & {
+          standalone?: boolean;
+        }).standalone
+      );
+
+    if (
+      launchedForCapture
+      || standalone
+    ) {
+      setView("calls");
+
+      window.setTimeout(() => {
+        captureTitleRef.current?.focus();
+      }, 0);
+    }
 
     if (
       window.location.hash
@@ -2931,6 +2965,7 @@ function App() {
               <div className="capture-form-row">
                 <input
                   id="call-title"
+                  ref={captureTitleRef}
                   value={
                     title
                   }

@@ -10,31 +10,21 @@
     "dist:portable": "electron-builder --win portable"
   },
   "devDependencies": {
-    "electron": "^44.3.0",
+    "electron": "44.3.0",
     "electron-builder": "^26.0.12"
   },
   "build": {
     "appId": "com.tca.floatingcapture",
     "productName": "Conversation Assistant Capture",
     "files": [
-      "src/**/*",
-      "package.json"
+      "src/**/*"
     ],
     "win": {
       "target": [
         "nsis",
         "portable"
-      ]
-    },
-    "nsis": {
-      "oneClick": false,
-      "allowToChangeInstallationDirectory": true,
-      "createDesktopShortcut": true,
-      "createStartMenuShortcut": true
+      ],
+      "icon": "src/icon-512.png"
     }
-  },
-  "allowScripts": {
-    "electron@44.3.0": true,
-    "electron-winstaller@5.4.0": true
   }
 }

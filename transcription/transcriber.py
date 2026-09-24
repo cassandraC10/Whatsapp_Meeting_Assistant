@@ -315,12 +315,12 @@ def create_combined_transcript(
     remote_label = (
         f"THEM / {remote_participant_name}"
         if remote_participant_name
-        else "THEM / REMOTE SPEAKER"
+        else "THEM"
     )
 
     return f"""
 ============================================================
-ME / LOCAL SPEAKER
+I / LOCAL SPEAKER
 ============================================================
 
 {my_transcript}
@@ -405,7 +405,7 @@ def transcribe_call(
     their_label = (
         f"THEM / {remote_participant_name}"
         if remote_participant_name
-        else "THEM / REMOTE SPEAKER"
+        else "THEM"
     )
 
     # Mic and system recordings are independent. Run exactly two
@@ -423,7 +423,7 @@ def transcribe_call(
         my_future = executor.submit(
             transcribe_audio,
             audio_path=mic_audio,
-            speaker_label="ME / LOCAL SPEAKER",
+            speaker_label="I / LOCAL SPEAKER",
             status_callback=status_callback,
         )
         their_future = executor.submit(

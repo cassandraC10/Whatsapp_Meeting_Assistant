@@ -1,32 +1,65 @@
-# React + TypeScript + Vite
+# TCA V0.4 — Windows Floating Capture
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+Native Windows companion for the local TCA web app.
 
-Currently, two official plugins are available:
+## What it does
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+- Keeps a small Capture button above other Windows apps.
+- Clicking it opens TCA directly at `/?capture=1`.
+- TCA remains responsible for consent, recording, processing, memory, and the rest of the product.
+- A system-tray menu provides Capture, Open TCA, reposition, and Quit.
 
-## React Compiler
+## Run locally
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+Start TCA first:
 
-## Expanding the Oxlint configuration
-
-If you are developing a production application, we recommend enabling type-aware lint rules by installing `oxlint-tsgolint` and editing `.oxlintrc.json`:
-
-```json
-{
-  "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "plugins": ["react", "typescript", "oxc"],
-  "options": {
-    "typeAware": true
-  },
-  "rules": {
-    "react/rules-of-hooks": "error",
-    "react/only-export-components": ["warn", { "allowConstantExport": true }]
-  }
-}
+```powershell
+cd frontend
+npm run dev
 ```
 
-See the [Oxlint rules documentation](https://oxc.rs/docs/guide/usage/linter/rules) for the full list of rules and categories.
+That gives:
+
+`http://localhost:5173/`
+
+Then, from this companion folder:
+
+```powershell
+npm install
+npm start
+```
+
+The floating Capture button appears near the bottom-right of the primary display.
+
+## Build the Windows app
+
+```powershell
+npm run dist
+```
+
+or:
+
+```powershell
+npm run dist:portable
+```
+
+Builds are placed in `dist/`.
+
+## Preview server
+
+To point the companion at Vite preview instead:
+
+```powershell
+$env:TCA_URL="http://localhost:4173/"
+npm start
+```
+
+The companion adds `?capture=1` automatically.
+
+## Later deployment
+
+Set `TCA_URL` to the deployed TCA origin.
+
+## Product boundary
+
+This is intentionally a native launcher, not a second recorder. The one-tap surface is native because a normal browser/PWA cannot stay above arbitrary Windows applications. The click hands control to the existing TCA web capture flow, which remains consent-first.
