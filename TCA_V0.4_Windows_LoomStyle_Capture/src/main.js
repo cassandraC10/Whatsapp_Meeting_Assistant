@@ -594,6 +594,31 @@ ipcMain.on("capture-signup", () => {
   void openSignup();
 });
 
+ipcMain.on("capture-switch-account", () => {
+  if (
+    captureState === "recording" ||
+    captureState === "paused" ||
+    captureState === "starting" ||
+    captureState === "finishing" ||
+    captureState === "processing"
+  ) {
+    return;
+  }
+
+  clearAuthToken();
+  captureState = "login";
+  activeCall = null;
+  elapsedSeconds = 0;
+
+  if (bubbleWindow && !bubbleWindow.isDestroyed()) {
+    resizeAndPosition();
+    bubbleWindow.webContents.send("capture-state", {
+      state: "login",
+      error: "",
+    });
+  }
+});
+
 ipcMain.on("capture-start", (_event, payload) => {
   void startRecording(payload || {});
 });

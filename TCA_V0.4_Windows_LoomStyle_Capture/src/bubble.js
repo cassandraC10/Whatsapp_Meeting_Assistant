@@ -155,6 +155,10 @@ function renderBody() {
         Start recording
       </button>
 
+      <button id="switch-account" class="secondary auth-switch-button">
+        Switch account
+      </button>
+
       ${current.error ? `<div class="error">${escapeHtml(current.error)}</div>` : ""}
     `;
   }
@@ -300,6 +304,12 @@ function bindState() {
         consentConfirmed: current.consent,
       });
     });
+
+    document
+      .getElementById("switch-account")
+      .addEventListener("click", () => {
+        window.captureBridge.switchAccount();
+      });
 
     setTimeout(() => title.focus(), 0);
     updateStart();

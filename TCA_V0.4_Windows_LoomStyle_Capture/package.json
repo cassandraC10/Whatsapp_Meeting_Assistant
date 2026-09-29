@@ -1,8 +1,7 @@
 {
-  "name": "tca-floating-capture",
+  "name": "tca-windows-loomstyle-capture",
   "version": "0.5.0",
   "private": true,
-  "description": "Native Windows floating Capture companion for TCA.",
   "main": "src/main.js",
   "scripts": {
     "start": "electron .",
@@ -12,19 +11,5 @@
   "devDependencies": {
     "electron": "44.3.0",
     "electron-builder": "^26.0.12"
-  },
-  "build": {
-    "appId": "com.tca.floatingcapture",
-    "productName": "Conversation Assistant Capture",
-    "files": [
-      "src/**/*"
-    ],
-    "win": {
-      "target": [
-        "nsis",
-        "portable"
-      ],
-      "icon": "src/icon-512.png"
-    }
   }
 }
