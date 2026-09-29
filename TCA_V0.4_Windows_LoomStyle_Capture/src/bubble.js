@@ -7,6 +7,7 @@ let current = {
   elapsed: 0,
   error: "",
   call: null,
+  user: null,
 };
 
 function formatTimer(seconds) {
@@ -63,7 +64,7 @@ function render() {
   `;
 
   document.getElementById("close").addEventListener("click", () => {
-    if (["recording", "paused", "starting", "finishing", "processing"].includes(current.state)) {
+    if (["recording", "paused", "starting", "finishing", "processing", "logging-in"].includes(current.state)) {
       return;
     }
 
@@ -74,6 +75,48 @@ function render() {
 }
 
 function renderBody() {
+  if (current.state === "login" || current.state === "logging-in") {
+    const busy = current.state === "logging-in";
+
+    return `
+      <p class="eyebrow">Private capture</p>
+      <h1>Sign in to capture.</h1>
+      <p class="copy">
+        Your conversations are private to your TCA account.
+      </p>
+
+      <label class="title-label" for="email">Email</label>
+      <input
+        id="email"
+        class="title-input"
+        type="email"
+        placeholder="you@example.com"
+        autocomplete="email"
+        ${busy ? "disabled" : ""}
+      />
+
+      <label class="title-label auth-password-label" for="password">Password</label>
+      <input
+        id="password"
+        class="title-input"
+        type="password"
+        placeholder="Your password"
+        autocomplete="current-password"
+        ${busy ? "disabled" : ""}
+      />
+
+      <button id="login" class="primary" ${busy ? "disabled" : ""}>
+        ${busy ? "Signing in…" : "Sign in"}
+      </button>
+
+      <button id="signup" class="secondary auth-signup-button" ${busy ? "disabled" : ""}>
+        Create account in TCA
+      </button>
+
+      ${current.error ? `<div class="error">${escapeHtml(current.error)}</div>` : ""}
+    `;
+  }
+
   if (current.state === "consent") {
     return `
       <p class="eyebrow">Quick capture</p>
@@ -203,6 +246,34 @@ function renderBody() {
 }
 
 function bindState() {
+  if (current.state === "login") {
+    const email = document.getElementById("email");
+    const password = document.getElementById("password");
+    const login = document.getElementById("login");
+    const signup = document.getElementById("signup");
+
+    const submit = () => {
+      window.captureBridge.login({
+        email: email.value,
+        password: password.value,
+      });
+    };
+
+    login.addEventListener("click", submit);
+    password.addEventListener("keydown", (event) => {
+      if (event.key === "Enter") {
+        submit();
+      }
+    });
+
+    signup.addEventListener("click", () => {
+      window.captureBridge.openSignup();
+    });
+
+    setTimeout(() => email.focus(), 0);
+    return;
+  }
+
   if (current.state === "consent") {
     const title = document.getElementById("title");
     const consent = document.getElementById("consent");
@@ -246,6 +317,7 @@ function bindState() {
         elapsed: 0,
         error: "",
         call: null,
+        user: current.user,
       };
       render();
     });

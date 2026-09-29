@@ -72,6 +72,7 @@ class AskTCAService:
         self,
         question: str,
         call_id: str | None = None,
+        user_id: str | None = None,
     ) -> AskTCAResponse:
         clean_question = (
             question.strip()
@@ -85,14 +86,16 @@ class AskTCAService:
         if call_id:
             candidates = (
                 self._get_single_call_context(
-                    call_id
+                    call_id,
+                    user_id=user_id,
                 )
             )
 
         else:
             candidates = (
                 self._retrieve_context(
-                    clean_question
+                    clean_question,
+                    user_id=user_id,
                 )
             )
 
@@ -171,6 +174,7 @@ class AskTCAService:
     def _retrieve_context(
         self,
         question: str,
+        user_id: str | None = None,
     ) -> list[dict]:
         search_terms = (
             self._extract_search_terms(
@@ -186,7 +190,8 @@ class AskTCAService:
         for term in search_terms:
             results = (
                 self.repository.search(
-                    term
+                    term,
+                    user_id=user_id,
                 )
             )
 
@@ -285,10 +290,12 @@ class AskTCAService:
     def _get_single_call_context(
         self,
         call_id: str,
+        user_id: str | None = None,
     ) -> list[dict]:
         call = (
             self.repository.get(
-                call_id
+                call_id,
+                user_id=user_id,
             )
         )
 

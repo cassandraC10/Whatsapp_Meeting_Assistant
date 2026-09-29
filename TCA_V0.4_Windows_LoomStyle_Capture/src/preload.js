@@ -3,6 +3,12 @@ const { contextBridge, ipcRenderer } = require("electron");
 contextBridge.exposeInMainWorld("captureBridge", {
   openCapture: () => ipcRenderer.send("capture-click"),
 
+  login: (payload) =>
+    ipcRenderer.send("capture-login", payload),
+
+  openSignup: () =>
+    ipcRenderer.send("capture-signup"),
+
   startRecording: (payload) =>
     ipcRenderer.send("capture-start", payload),
 

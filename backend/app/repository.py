@@ -31,6 +31,7 @@ class CallRepository:
     def create(
         self,
         title: str | None = None,
+        user_id: str | None = None,
     ) -> Call:
         call_id = str(
             uuid4()
@@ -45,6 +46,7 @@ class CallRepository:
 
         call = Call(
             id=call_id,
+            user_id=user_id,
             title=clean_title,
             created_at=datetime.now(
                 timezone.utc
@@ -158,6 +160,7 @@ class CallRepository:
     def get(
         self,
         call_id: str,
+        user_id: str | None = None,
     ) -> Call | None:
         metadata_file = (
             self._call_directory(
@@ -177,14 +180,16 @@ class CallRepository:
             )
         )
 
-        return (
-            Call.model_validate(
-                data
-            )
-        )
+        call = Call.model_validate(data)
+
+        if user_id is not None and call.user_id != user_id:
+            return None
+
+        return call
 
     def list_all(
         self,
+        user_id: str | None = None,
     ) -> list[Call]:
         calls: list[Call] = []
 
@@ -202,7 +207,8 @@ class CallRepository:
                 continue
 
             call = self.get(
-                directory.name
+                directory.name,
+                user_id=user_id,
             )
 
             if call:
@@ -222,6 +228,7 @@ class CallRepository:
     def search(
         self,
         query: str,
+        user_id: str | None = None,
     ) -> list[dict]:
         clean_query = (
             query.strip()
@@ -236,7 +243,7 @@ class CallRepository:
 
         results: list[dict] = []
 
-        for call in self.list_all():
+        for call in self.list_all(user_id=user_id):
             searchable_sections = (
                 self._searchable_sections(
                     call
@@ -618,10 +625,10 @@ class CallRepository:
 
         return tasks
 
-    def list_people(self) -> list[Person]:
+    def list_people(self, user_id: str | None = None) -> list[Person]:
         people: dict[str, dict] = {}
 
-        for call in self.list_all():
+        for call in self.list_all(user_id=user_id):
             for name in self._extract_people(call):
                 key = name.casefold()
                 entry = people.setdefault(
@@ -644,12 +651,13 @@ class CallRepository:
     def get_person_detail(
         self,
         person_id: str,
+        user_id: str | None = None,
     ) -> PersonDetail | None:
         matches: list[
             tuple[Call, str]
         ] = []
 
-        for call in self.list_all():
+        for call in self.list_all(user_id=user_id):
             for name in self._extract_people(call):
                 candidate_id = str(
                     uuid5(
@@ -1015,6 +1023,43 @@ class CallRepository:
         )
 
         return True
+
+    def claim_legacy_calls(self, user_id: str) -> int:
+        """Assign legacy V0.4 calls without an owner to the first authenticated user.
+
+        This is a one-time local migration path. New calls are always created
+        with an owner. Production environments should start with an empty
+        user-owned store.
+        """
+        claimed = 0
+
+        if not CALLS_DIRECTORY.exists():
+            return 0
+
+        for directory in CALLS_DIRECTORY.iterdir():
+            if not directory.is_dir():
+                continue
+
+            metadata_file = directory / "metadata.json"
+            if not metadata_file.exists():
+                continue
+
+            try:
+                data = json.loads(
+                    metadata_file.read_text(encoding="utf-8")
+                )
+                call = Call.model_validate(data)
+            except (json.JSONDecodeError, OSError, ValueError, TypeError):
+                continue
+
+            if call.user_id:
+                continue
+
+            call.user_id = user_id
+            self.save(call)
+            claimed += 1
+
+        return claimed
 
     def get_directory(
         self,

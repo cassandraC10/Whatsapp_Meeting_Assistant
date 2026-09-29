@@ -41,6 +41,7 @@ class Call(
     BaseModel
 ):
     id: str
+    user_id: str | None = None
     title: str
     created_at: datetime
     duration_seconds: float = 0

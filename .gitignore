@@ -1,4 +1,4 @@
-.venv/
+/.venv/
 venv/
 node_modules/
 
@@ -27,3 +27,6 @@ meeting_notes.txt
 # V2 local call data
 backend/data/calls/*
 !backend/data/calls/.gitkeep
+
+# V0.5 auth database
+backend/data/*.db

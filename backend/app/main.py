@@ -152,6 +152,8 @@ def signup(request: SignupRequest):
             detail=message,
         ) from error
 
+    call_repository.claim_legacy_calls(user.id)
+
     return AuthResponse(
         access_token=create_access_token(user),
         user=AuthUserResponse(**user.to_public_dict()),
@@ -174,6 +176,8 @@ def login(request: LoginRequest):
             detail="Email or password is incorrect.",
             headers={"WWW-Authenticate": "Bearer"},
         )
+
+    call_repository.claim_legacy_calls(user.id)
 
     return AuthResponse(
         access_token=create_access_token(user),
@@ -198,10 +202,12 @@ def current_user(user=Depends(get_current_user)):
 )
 def create_call(
     request: CreateCallRequest,
+    user=Depends(get_current_user),
 ):
     return (
         call_repository.create(
-            title=request.title
+            title=request.title,
+            user_id=user.id,
         )
     )
 
@@ -210,9 +216,13 @@ def create_call(
     "/calls",
     response_model=list[Call],
 )
-def list_calls():
+def list_calls(
+    user=Depends(get_current_user),
+):
     calls = (
-        call_repository.list_all()
+        call_repository.list_all(
+            user_id=user.id
+        )
     )
 
     return [
@@ -231,6 +241,7 @@ def search_calls(
         default="",
         max_length=200,
     ),
+    user=Depends(get_current_user),
 ):
     query = (
         q.strip()
@@ -245,7 +256,8 @@ def search_calls(
 
     results = (
         call_repository.search(
-            query
+            query,
+            user_id=user.id,
         )
     )
 
@@ -264,6 +276,7 @@ def search_calls(
 )
 def ask_tca(
     request: AskTCARequest,
+    user=Depends(get_current_user),
 ):
     try:
         return ask_service.ask(
@@ -273,6 +286,7 @@ def ask_tca(
             call_id=(
                 request.call_id
             ),
+            user_id=user.id,
         )
 
     except RuntimeError as error:
@@ -310,9 +324,11 @@ def ask_tca(
 )
 def get_call(
     call_id: str,
+    user=Depends(get_current_user),
 ):
     return require_call(
-        call_id
+        call_id,
+        user,
     )
 
 
@@ -323,9 +339,11 @@ def get_call(
 def update_call(
     call_id: str,
     request: UpdateCallRequest,
+    user=Depends(get_current_user),
 ):
     require_call(
-        call_id
+        call_id,
+        user,
     )
 
     try:
@@ -354,9 +372,13 @@ def update_call(
     "/people",
     response_model=PeopleResponse,
 )
-def get_people():
+def get_people(
+    user=Depends(get_current_user),
+):
     return PeopleResponse(
-        people=call_repository.list_people()
+        people=call_repository.list_people(
+            user_id=user.id
+        )
     )
 
 
@@ -366,8 +388,12 @@ def get_people():
 )
 def get_person(
     person_id: str,
+    user=Depends(get_current_user),
 ):
-    person = call_repository.get_person_detail(person_id)
+    person = call_repository.get_person_detail(
+        person_id,
+        user_id=user.id,
+    )
     if person is None:
         raise HTTPException(
             status_code=404,
@@ -382,9 +408,11 @@ def get_person(
 )
 def get_call_tasks(
     call_id: str,
+    user=Depends(get_current_user),
 ):
     require_call(
-        call_id
+        call_id,
+        user,
     )
 
     tasks = call_repository.get_tasks(
@@ -405,9 +433,11 @@ def update_call_task(
     call_id: str,
     task_id: str,
     request: UpdateTaskRequest,
+    user=Depends(get_current_user),
 ):
     require_call(
-        call_id
+        call_id,
+        user,
     )
 
     if (
@@ -461,9 +491,11 @@ def update_call_task(
 def delete_call_task(
     call_id: str,
     task_id: str,
+    user=Depends(get_current_user),
 ):
     require_call(
-        call_id
+        call_id,
+        user,
     )
 
     deleted = call_repository.delete_task(
@@ -492,9 +524,11 @@ def delete_call_task(
 )
 def delete_call(
     call_id: str,
+    user=Depends(get_current_user),
 ):
     call = require_call(
-        call_id
+        call_id,
+        user,
     )
 
     if (
@@ -561,9 +595,11 @@ def delete_call(
 )
 def start_call_recording(
     call_id: str,
+    user=Depends(get_current_user),
 ):
     call = require_call(
-        call_id
+        call_id,
+        user,
     )
 
     if call.status in {
@@ -698,9 +734,11 @@ def start_call_recording(
 )
 def pause_call_recording(
     call_id: str,
+    user=Depends(get_current_user),
 ):
     call = require_call(
-        call_id
+        call_id,
+        user,
     )
 
     if (
@@ -772,9 +810,11 @@ def pause_call_recording(
 )
 def resume_call_recording(
     call_id: str,
+    user=Depends(get_current_user),
 ):
     call = require_call(
-        call_id
+        call_id,
+        user,
     )
 
     if (
@@ -845,9 +885,11 @@ def resume_call_recording(
 )
 def finish_call_recording(
     call_id: str,
+    user=Depends(get_current_user),
 ):
     call = require_call(
-        call_id
+        call_id,
+        user,
     )
 
     if call.status not in {
@@ -965,9 +1007,11 @@ def finish_call_recording(
 )
 def get_recording_status(
     call_id: str,
+    user=Depends(get_current_user),
 ):
     call = require_call(
-        call_id
+        call_id,
+        user,
     )
 
     return {
@@ -1002,9 +1046,11 @@ def get_recording_status(
 )
 def process_call(
     call_id: str,
+    user=Depends(get_current_user),
 ):
     call = require_call(
-        call_id
+        call_id,
+        user,
     )
 
     call_directory = (
@@ -1068,7 +1114,8 @@ def process_call(
     except Exception as error:
         latest_call = (
             call_repository.get(
-                call_id
+                call_id,
+                user_id=user.id,
             )
             or call
         )
@@ -1098,9 +1145,11 @@ def process_call(
 )
 def generate_call_follow_up(
     call_id: str,
+    user=Depends(get_current_user),
 ):
     call = require_call(
-        call_id
+        call_id,
+        user,
     )
 
     if call.status != CallStatus.COMPLETED:
@@ -1177,9 +1226,11 @@ def generate_call_follow_up(
 )
 def get_call_transcript(
     call_id: str,
+    user=Depends(get_current_user),
 ):
     require_call(
-        call_id
+        call_id,
+        user,
     )
 
     call_directory = (
@@ -1220,9 +1271,11 @@ def get_call_transcript(
 )
 def get_call_notes(
     call_id: str,
+    user=Depends(get_current_user),
 ):
     call = require_call(
-        call_id
+        call_id,
+        user,
     )
 
     call_directory = (
@@ -1261,10 +1314,12 @@ def get_call_notes(
 
 def require_call(
     call_id: str,
+    user,
 ) -> Call:
     call = (
         call_repository.get(
-            call_id
+            call_id,
+            user_id=user.id,
         )
     )
 
