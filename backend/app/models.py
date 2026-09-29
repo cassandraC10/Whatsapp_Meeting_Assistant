@@ -223,6 +223,12 @@ class AuthUserResponse(BaseModel):
     email: str
     name: str
     created_at: datetime
+    onboarding_completed: bool = False
+
+
+class UpdateProfileRequest(BaseModel):
+    name: str = Field(min_length=2, max_length=120)
+    onboarding_completed: bool = True
 
 
 class SignupRequest(BaseModel):

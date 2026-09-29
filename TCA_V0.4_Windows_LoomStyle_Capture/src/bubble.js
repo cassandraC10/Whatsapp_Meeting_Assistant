@@ -125,6 +125,13 @@ function renderBody() {
         TCA will record your microphone and the audio playing through your computer.
       </p>
 
+      ${current.user?.name ? `
+        <div class="signed-in-as">
+          <span class="signed-in-dot" aria-hidden="true"></span>
+          <span>Signed in as <strong>${escapeHtml(current.user.name)}</strong></span>
+        </div>
+      ` : ""}
+
       <label class="title-label" for="title">
         Title <span class="optional">Optional</span>
       </label>

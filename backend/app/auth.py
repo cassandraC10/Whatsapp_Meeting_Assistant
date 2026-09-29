@@ -33,6 +33,7 @@ class AuthUser:
     email: str
     name: str
     created_at: datetime
+    onboarding_completed: bool
 
     def to_public_dict(self) -> dict:
         return {
@@ -40,6 +41,7 @@ class AuthUser:
             "email": self.email,
             "name": self.name,
             "created_at": self.created_at.isoformat(),
+            "onboarding_completed": self.onboarding_completed,
         }
 
 
@@ -67,10 +69,21 @@ def initialize_auth_database() -> None:
                 name TEXT NOT NULL,
                 password_hash TEXT NOT NULL,
                 password_salt TEXT NOT NULL,
-                created_at TEXT NOT NULL
+                created_at TEXT NOT NULL,
+                onboarding_completed INTEGER NOT NULL DEFAULT 0
             )
             """
         )
+
+        columns = {
+            row[1]
+            for row in connection.execute("PRAGMA table_info(users)").fetchall()
+        }
+        if "onboarding_completed" not in columns:
+            connection.execute(
+                "ALTER TABLE users ADD COLUMN onboarding_completed INTEGER NOT NULL DEFAULT 0"
+            )
+
         connection.commit()
 
 
@@ -148,8 +161,9 @@ def create_user(name: str, email: str, password: str) -> AuthUser:
                     name,
                     password_hash,
                     password_salt,
-                    created_at
-                ) VALUES (?, ?, ?, ?, ?, ?)
+                    created_at,
+                    onboarding_completed
+                ) VALUES (?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     user_id,
@@ -158,6 +172,7 @@ def create_user(name: str, email: str, password: str) -> AuthUser:
                     password_hash,
                     password_salt,
                     created_at.isoformat(),
+                    0,
                 ),
             )
             connection.commit()
@@ -169,6 +184,7 @@ def create_user(name: str, email: str, password: str) -> AuthUser:
         email=clean_email,
         name=clean_name,
         created_at=created_at,
+        onboarding_completed=False,
     )
 
 
@@ -179,7 +195,7 @@ def authenticate_user(email: str, password: str) -> AuthUser | None:
     with _connect() as connection:
         row = connection.execute(
             """
-            SELECT id, email, name, password_hash, password_salt, created_at
+            SELECT id, email, name, password_hash, password_salt, created_at, onboarding_completed
             FROM users
             WHERE email = ?
             """,
@@ -205,7 +221,7 @@ def get_user(user_id: str) -> AuthUser | None:
     with _connect() as connection:
         row = connection.execute(
             """
-            SELECT id, email, name, created_at
+            SELECT id, email, name, created_at, onboarding_completed
             FROM users
             WHERE id = ?
             """,
@@ -225,7 +241,40 @@ def _row_to_user(row: sqlite3.Row) -> AuthUser:
         email=row["email"],
         name=row["name"],
         created_at=created_at,
+        onboarding_completed=bool(row["onboarding_completed"]),
     )
+
+
+def update_user_profile(
+    user_id: str,
+    name: str,
+    onboarding_completed: bool,
+) -> AuthUser:
+    clean_name = " ".join(name.strip().split())
+
+    if len(clean_name) < 2:
+        raise ValueError("Name must be at least 2 characters.")
+    if len(clean_name) > 120:
+        raise ValueError("Name must be 120 characters or fewer.")
+
+    initialize_auth_database()
+
+    with _connect() as connection:
+        connection.execute(
+            """
+            UPDATE users
+            SET name = ?, onboarding_completed = ?
+            WHERE id = ?
+            """,
+            (clean_name, int(onboarding_completed), user_id),
+        )
+        connection.commit()
+
+    user = get_user(user_id)
+    if user is None:
+        raise ValueError("Account no longer exists.")
+
+    return user
 
 
 def _base64url(value: bytes) -> str:

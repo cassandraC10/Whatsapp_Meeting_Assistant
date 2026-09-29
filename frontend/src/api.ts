@@ -10,6 +10,7 @@ export interface AuthUser {
   email: string;
   name: string;
   created_at: string;
+  onboarding_completed: boolean;
 }
 
 export interface AuthResponse {
@@ -75,6 +76,26 @@ export function login(
 export function getCurrentUser(): Promise<AuthUser> {
   return request<AuthUser>(
     "/auth/me",
+  );
+}
+
+export function updateCurrentUserProfile(
+  name: string,
+  onboardingCompleted = true,
+): Promise<AuthUser> {
+  return request<AuthUser>(
+    "/auth/me",
+    {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+        "Accept": "application/json",
+      },
+      body: JSON.stringify({
+        name,
+        onboarding_completed: onboardingCompleted,
+      }),
+    },
   );
 }
 

@@ -1,8 +1,12 @@
+import { useEffect, useState } from "react";
 import type {
   MouseEventHandler,
 } from "react";
 
-import { clearAuthToken } from "../api";
+import {
+  clearAuthToken,
+  getCurrentUser,
+} from "../api";
 
 type Theme =
   | "light"
@@ -23,6 +27,26 @@ export function TopBar({
   onAsk,
   onPeople,
 }: TopBarProps) {
+  const [userName, setUserName] = useState("");
+
+  useEffect(() => {
+    let active = true;
+
+    void getCurrentUser()
+      .then((user) => {
+        if (active) {
+          setUserName(user.name);
+        }
+      })
+      .catch(() => {
+        // Auth expiry is handled centrally by the API client.
+      });
+
+    return () => {
+      active = false;
+    };
+  }, []);
+
   function signOut() {
     clearAuthToken();
     window.location.reload();
@@ -77,6 +101,16 @@ export function TopBar({
           >
             People
           </button>
+        )}
+
+        {userName && (
+          <span
+            className="topbar-user"
+            title="Your TCA identity"
+          >
+            <span className="topbar-user-dot" aria-hidden="true" />
+            {userName}
+          </span>
         )}
 
         <button

@@ -7,12 +7,14 @@ import {
   getAuthToken,
   getCurrentUser,
 } from "./api";
+import type { AuthUser } from "./api";
 import { AuthScreen } from "./components/AuthScreen";
+import { OnboardingScreen } from "./components/OnboardingScreen";
 import "./styles.css";
 
 function AuthGate() {
   const [checking, setChecking] = useState(true);
-  const [authenticated, setAuthenticated] = useState(false);
+  const [user, setUser] = useState<AuthUser | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -20,21 +22,21 @@ function AuthGate() {
     async function checkSession() {
       if (!getAuthToken()) {
         if (active) {
-          setAuthenticated(false);
+          setUser(null);
           setChecking(false);
         }
         return;
       }
 
       try {
-        await getCurrentUser();
+        const currentUser = await getCurrentUser();
         if (active) {
-          setAuthenticated(true);
+          setUser(currentUser);
         }
       } catch {
         clearAuthToken();
         if (active) {
-          setAuthenticated(false);
+          setUser(null);
         }
       } finally {
         if (active) {
@@ -47,7 +49,7 @@ function AuthGate() {
 
     function handleAuthExpired() {
       clearAuthToken();
-      setAuthenticated(false);
+      setUser(null);
     }
 
     window.addEventListener("tca-auth-expired", handleAuthExpired);
@@ -67,8 +69,17 @@ function AuthGate() {
     );
   }
 
-  if (!authenticated) {
+  if (!user) {
     return <AuthScreen />;
+  }
+
+  if (!user.onboarding_completed) {
+    return (
+      <OnboardingScreen
+        user={user}
+        onComplete={setUser}
+      />
+    );
   }
 
   return <App />;

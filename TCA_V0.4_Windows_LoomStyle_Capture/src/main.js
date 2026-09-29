@@ -343,19 +343,36 @@ function resetToIdle() {
   }
 }
 
-function expandCapture() {
+async function expandCapture() {
   if (!bubbleWindow || bubbleWindow.isDestroyed()) {
     createBubble();
     return;
   }
 
   if (captureState === "idle") {
-    captureState = isAuthenticated() ? "consent" : "login";
-    resizeAndPosition();
-
-    bubbleWindow.webContents.send("capture-state", {
-      state: captureState,
-    });
+    if (isAuthenticated()) {
+      try {
+        const result = await apiRequest("/auth/me");
+        captureState = "consent";
+        resizeAndPosition();
+        bubbleWindow.webContents.send("capture-state", {
+          state: captureState,
+          user: result,
+        });
+      } catch {
+        captureState = "login";
+        resizeAndPosition();
+        bubbleWindow.webContents.send("capture-state", {
+          state: captureState,
+        });
+      }
+    } else {
+      captureState = "login";
+      resizeAndPosition();
+      bubbleWindow.webContents.send("capture-state", {
+        state: captureState,
+      });
+    }
   } else {
     bubbleWindow.show();
     bubbleWindow.focus();
@@ -566,7 +583,7 @@ async function cancelCapture() {
 }
 
 ipcMain.on("capture-click", () => {
-  expandCapture();
+  void expandCapture();
 });
 
 ipcMain.on("capture-login", (_event, payload) => {

@@ -25,6 +25,7 @@ class CallProcessingService:
         self,
         call: Call,
         status_callback=None,
+        local_speaker_name: str | None = None,
     ) -> dict:
         call_directory = (
             self.repository.get_directory(
@@ -109,6 +110,9 @@ class CallProcessingService:
                     call_title=call.title,
                     remote_participant_name=(
                         remote_participant_name
+                    ),
+                    local_speaker_name=(
+                        local_speaker_name
                     ),
                     status_callback=(
                         status_callback

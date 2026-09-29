@@ -134,7 +134,7 @@ class ConversationNotes(BaseModel):
     my_action_items: list[ActionItem] = Field(
         description=(
             "Next steps belonging to "
-            "I / LOCAL SPEAKER."
+            "ME / LOCAL SPEAKER."
         )
     )
 
@@ -290,12 +290,13 @@ def _clean_known_name(
 
 def _participant_from_context(
     remote_participant_name: str | None,
+    local_speaker_name: str | None,
 ) -> list[dict]:
     return [
         {
             "role": "me",
-            "name": None,
-            "source": "local-speaker",
+            "name": _clean_known_name(local_speaker_name),
+            "source": "account-profile" if local_speaker_name else "local-speaker",
         },
         {
             "role": "them",
@@ -407,14 +408,19 @@ def _sanitize_notes(
     transcript: str,
     call_title: str | None,
     remote_participant_name: str | None,
+    local_speaker_name: str | None,
 ) -> ConversationNotes:
     known_name = _clean_known_name(
         remote_participant_name
     )
+    known_local_name = _clean_known_name(
+        local_speaker_name
+    )
 
     participants = (
         _participant_from_context(
-            known_name
+            known_name,
+            known_local_name,
         )
     )
 
@@ -424,8 +430,12 @@ def _sanitize_notes(
         notes.participants = [
             Participant(
                 role="me",
-                name=None,
-                source="local-speaker",
+                name=known_local_name,
+                source=(
+                    "account-profile"
+                    if known_local_name
+                    else "local-speaker"
+                ),
             ),
             Participant(
                 role="them",
@@ -439,8 +449,12 @@ def _sanitize_notes(
         safe_participants: list[Participant] = [
             Participant(
                 role="me",
-                name=None,
-                source="local-speaker",
+                name=known_local_name,
+                source=(
+                    "account-profile"
+                    if known_local_name
+                    else "local-speaker"
+                ),
             )
         ]
 
@@ -540,6 +554,7 @@ def generate_conversation_notes(
     transcript: str,
     call_title: str | None = None,
     remote_participant_name: str | None = None,
+    local_speaker_name: str | None = None,
     status_callback=None,
 ) -> ConversationNotes:
     if not transcript.strip():
@@ -550,6 +565,9 @@ def generate_conversation_notes(
 
     known_name = _clean_known_name(
         remote_participant_name
+    )
+    known_local_name = _clean_known_name(
+        local_speaker_name
     )
 
     context_lines = [
@@ -562,7 +580,9 @@ def generate_conversation_notes(
         ),
         "Speaker roles:",
         (
-            "I = local TCA user. Human-readable output should use I / my / me for the local speaker unless their name is explicitly established."
+            f"ME = {known_local_name}. This is the authenticated TCA user."
+            if known_local_name
+            else "ME = local TCA user. The user's name is unknown."
         ),
         (
             f"THEM = {known_name}. "
@@ -597,6 +617,9 @@ Grounding rules:
   when referring to THEM in summary, key points, decisions or
   action items. Do not replace a known person's name with
   "they", "them", "the speaker" or another invented label.
+- When referring to ME in natural-language notes, use first-person
+  language such as "I" or "my" rather than "the local speaker",
+  "the TCA user" or "ME".
 - Never invent a decision.
 - Never invent a task.
 - Never invent a deadline.
@@ -630,6 +653,7 @@ Participant rules:
 
 - Always return a participant entry for ME.
 - Always return a participant entry for THEM.
+- For ME, use the supplied authenticated account name when available.
 - For THEM, use the supplied name if one is explicitly provided.
 - Otherwise use null unless the transcript itself clearly
   establishes a person's name.
@@ -673,6 +697,9 @@ TRANSCRIPT:
         call_title=call_title,
         remote_participant_name=(
             remote_participant_name
+        ),
+        local_speaker_name=(
+            local_speaker_name
         ),
     )
 
@@ -739,13 +766,9 @@ TCA — THE CALL ASSISTANT
 PARTICIPANTS
 {format_list([
     (
-        f"{item.name}"
+        f"{item.role}: {item.name}"
         if item.name
-        else (
-            "I"
-            if item.role.casefold() == "me"
-            else "Them"
-        )
+        else item.role
     )
     for item in notes.participants
 ])}
@@ -777,6 +800,7 @@ def summarize_call(
     call_directory: str | Path,
     call_title: str | None = None,
     remote_participant_name: str | None = None,
+    local_speaker_name: str | None = None,
     status_callback=None,
 ) -> tuple[
     ConversationNotes,
@@ -821,6 +845,9 @@ def summarize_call(
         call_title=call_title,
         remote_participant_name=(
             remote_participant_name
+        ),
+        local_speaker_name=(
+            local_speaker_name
         ),
         status_callback=status_callback,
     )

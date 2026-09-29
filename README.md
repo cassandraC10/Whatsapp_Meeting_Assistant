@@ -1,36 +1,98 @@
-# TCA V0.5 Feature 2 — Private Conversation Ownership
+# TCA V0.5 — Feature 3: Onboarding + User Identity
 
-This feature makes saved conversations private to the authenticated TCA user.
+This package is built on the V0.5 Feature 2 private-ownership implementation.
 
-## Backend
+## What changed
 
-Every conversation now carries `user_id`. Authenticated API routes scope calls, search, Ask TCA, People, tasks, transcripts, notes, follow-ups, recording state and deletion to the current user.
+### Account identity
+- Auth users now have `onboarding_completed`.
+- Existing V0.5 accounts are migrated to onboarding-required automatically.
+- New accounts start with onboarding incomplete.
+- `PATCH /auth/me` saves the user's display name and completes onboarding.
 
-Existing V0.4 local calls without an owner are claimed once by the first authenticated account that signs in. New calls are always created with an owner.
+### Conversation identity
+- The authenticated account name is passed into the processing pipeline as `local_speaker_name`.
+- Generated participant memory identifies the local speaker from the account profile with source `account-profile`.
+- The model is instructed to use first-person language (`I`, `my`) when referring to the local speaker rather than `the local speaker`, `the TCA user`, or `ME`.
+- Remote participant identity rules remain unchanged: explicit call-title identity remains authoritative and unknown names remain unknown.
+- Local action items receive the authenticated user's name as `owner_name`.
 
-## Windows companion
+### Web onboarding
+- First authenticated launch shows a short identity confirmation screen.
+- The user can confirm/edit the name TCA should use for their memory.
+- The existing app opens after onboarding is complete.
+- The top bar shows the authenticated user's name.
 
-The native floating Capture companion now signs in directly inside the native panel and stores the access token using Electron `safeStorage` when available. The token is sent with capture requests so the bubble continues to work after the API becomes authenticated.
+### Windows capture companion
+- When the blue bubble is opened with a stored token, the companion refreshes `/auth/me` and shows `Signed in as <name>` in the consent panel.
+- Recording ownership remains enforced by the authenticated backend session.
 
-The tray still uses the blue TCA icon.
+## Files to replace/add
 
-## Test order
+Replace the corresponding complete files in the V0.5 project:
 
-1. Start backend.
-2. Start frontend.
-3. Start the Windows companion.
-4. Create/login as User A in the web app.
-5. Confirm User A sees their calls.
-6. Create a new call as User A.
-7. Sign out.
-8. Create/login as User B.
-9. Confirm User B does not see User A's calls.
-10. Attempt the User A call URL directly while logged in as User B; it must return 404.
-11. Search, Ask TCA, People and tasks as User B; none may surface User A data.
-12. Log back into User A and confirm the call is visible again.
-13. Start the native companion, sign in once, then create a capture.
-14. Confirm the captured call appears only in the signed-in user's account.
+- `backend/app/auth.py`
+- `backend/app/models.py`
+- `backend/app/main.py`
+- `backend/app/processing_service.py`
+- `intelligence/summarizer.py`
+- `frontend/src/api.ts`
+- `frontend/src/main.tsx`
+- `frontend/src/styles.css`
+- `frontend/src/components/TopBar.tsx`
 
-## Important
+Add:
 
-`TCA_AUTH_SECRET` must be set to a strong random secret in production. The development fallback in `auth.py` is for local testing only.
+- `frontend/src/components/OnboardingScreen.tsx`
+- `tests/feature3_identity_smoke.py`
+
+For the Windows companion, replace:
+
+- `TCA_V0.4_Windows_LoomStyle_Capture/src/main.js`
+- `TCA_V0.4_Windows_LoomStyle_Capture/src/bubble.js`
+- `TCA_V0.4_Windows_LoomStyle_Capture/src/bubble.html`
+
+## Local test
+
+Backend:
+
+```powershell
+# restart FastAPI after replacing backend files
+```
+
+Frontend:
+
+```powershell
+cd frontend
+npm run build
+npm run dev
+```
+
+Windows companion:
+
+```powershell
+cd TCA_V0.4_Windows_LoomStyle_Capture
+npm start
+```
+
+Smoke test:
+
+```powershell
+python tests/feature3_identity_smoke.py
+```
+
+## Expected E2E
+
+1. Log in with an existing Feature 2 account.
+2. Complete the identity screen and confirm the name.
+3. Open TCA and confirm the name appears in the top bar.
+4. Start a new call and process it.
+5. In the saved notes, `participants` should contain:
+   - `role: me`
+   - the account name
+   - `source: account-profile`
+6. The remote participant should still use the explicit call-title name when present.
+7. The Windows bubble consent panel should show `Signed in as <name>`.
+8. Sign in as another account and verify its identity is independent.
+
+Gemini-dependent note: the final natural-language `I`/`my` wording is enforced by the summarizer prompt and sanitized participant identity. The local static environment used to build this package does not contain the Gemini SDK, so the actual generated-note wording must be verified on the Windows development environment where TCA already runs Gemini successfully.

@@ -10,6 +10,7 @@ from backend.app.auth import (
     create_user,
     get_current_user,
     initialize_auth_database,
+    update_user_profile,
 )
 from backend.app.models import (
     AskTCARequest,
@@ -22,6 +23,7 @@ from backend.app.models import (
     AuthUserResponse,
     LoginRequest,
     SignupRequest,
+    UpdateProfileRequest,
     PersonDetail,
     PeopleResponse,
     Task,
@@ -191,6 +193,29 @@ def login(request: LoginRequest):
 )
 def current_user(user=Depends(get_current_user)):
     return AuthUserResponse(**user.to_public_dict())
+
+
+@app.patch(
+    "/auth/me",
+    response_model=AuthUserResponse,
+)
+def update_current_user(
+    request: UpdateProfileRequest,
+    user=Depends(get_current_user),
+):
+    try:
+        updated = update_user_profile(
+            user_id=user.id,
+            name=request.name,
+            onboarding_completed=request.onboarding_completed,
+        )
+    except ValueError as error:
+        raise HTTPException(
+            status_code=400,
+            detail=str(error),
+        ) from error
+
+    return AuthUserResponse(**updated.to_public_dict())
 
 
 @app.post(
@@ -1107,7 +1132,8 @@ def process_call(
     try:
         return (
             processing_service.process(
-                call
+                call,
+                local_speaker_name=user.name,
             )
         )
 
