@@ -1,5 +1,82 @@
 const API_BASE_URL =
-  "http://127.0.0.1:8000";
+  import.meta.env.VITE_API_BASE_URL
+  || "http://127.0.0.1:8000";
+
+const AUTH_TOKEN_KEY = "tca-access-token";
+
+
+export interface AuthUser {
+  id: string;
+  email: string;
+  name: string;
+  created_at: string;
+}
+
+export interface AuthResponse {
+  access_token: string;
+  token_type: "bearer";
+  user: AuthUser;
+}
+
+export function getAuthToken(): string | null {
+  return localStorage.getItem(AUTH_TOKEN_KEY);
+}
+
+export function setAuthToken(token: string): void {
+  localStorage.setItem(AUTH_TOKEN_KEY, token);
+}
+
+export function clearAuthToken(): void {
+  localStorage.removeItem(AUTH_TOKEN_KEY);
+}
+
+export function signup(
+  name: string,
+  email: string,
+  password: string,
+): Promise<AuthResponse> {
+  return request<AuthResponse>(
+    "/auth/signup",
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Accept": "application/json",
+      },
+      body: JSON.stringify({
+        name,
+        email,
+        password,
+      }),
+    },
+  );
+}
+
+export function login(
+  email: string,
+  password: string,
+): Promise<AuthResponse> {
+  return request<AuthResponse>(
+    "/auth/login",
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Accept": "application/json",
+      },
+      body: JSON.stringify({
+        email,
+        password,
+      }),
+    },
+  );
+}
+
+export function getCurrentUser(): Promise<AuthUser> {
+  return request<AuthUser>(
+    "/auth/me",
+  );
+}
 
 
 export type CallStatus =
@@ -171,10 +248,27 @@ async function request<T>(
   path: string,
   options?: RequestInit
 ): Promise<T> {
+  const token = getAuthToken();
+  const headers = new Headers(options?.headers);
+
+  headers.set("Accept", headers.get("Accept") || "application/json");
+
+  if (token) {
+    headers.set("Authorization", `Bearer ${token}`);
+  }
+
   const response = await fetch(
     `${API_BASE_URL}${path}`,
-    options
+    {
+      ...options,
+      headers,
+    }
   );
+
+  if (response.status === 401 && !path.startsWith("/auth/")) {
+    clearAuthToken();
+    window.dispatchEvent(new Event("tca-auth-expired"));
+  }
 
   if (!response.ok) {
     let message =

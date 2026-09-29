@@ -2,6 +2,8 @@ import type {
   MouseEventHandler,
 } from "react";
 
+import { clearAuthToken } from "../api";
+
 type Theme =
   | "light"
   | "dark";
@@ -21,6 +23,11 @@ export function TopBar({
   onAsk,
   onPeople,
 }: TopBarProps) {
+  function signOut() {
+    clearAuthToken();
+    window.location.reload();
+  }
+
   return (
     <header className="topbar">
       <button
@@ -92,11 +99,19 @@ export function TopBar({
             : "◐"}
         </button>
 
+        <button
+          className="topbar-nav-button topbar-signout"
+          type="button"
+          onClick={signOut}
+        >
+          Sign out
+        </button>
+
         <span
           className="version"
-          aria-label="TCA version 0.4"
+          aria-label="TCA version 0.5"
         >
-          v0.4
+          v0.5
         </span>
       </nav>
     </header>

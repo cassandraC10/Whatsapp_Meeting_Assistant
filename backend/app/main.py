@@ -1,9 +1,16 @@
 import json
 
-from fastapi import FastAPI, HTTPException, Query, status
+from fastapi import Depends, FastAPI, HTTPException, Query, status
 from fastapi.middleware.cors import CORSMiddleware
 
 from backend.app.ask_service import AskTCAService
+from backend.app.auth import (
+    authenticate_user,
+    create_access_token,
+    create_user,
+    get_current_user,
+    initialize_auth_database,
+)
 from backend.app.models import (
     AskTCARequest,
     AskTCAResponse,
@@ -11,6 +18,10 @@ from backend.app.models import (
     CallStatus,
     CreateCallRequest,
     UpdateCallRequest,
+    AuthResponse,
+    AuthUserResponse,
+    LoginRequest,
+    SignupRequest,
     PersonDetail,
     PeopleResponse,
     Task,
@@ -28,7 +39,7 @@ app = FastAPI(
         "Backend API for "
         "TCA — The Call Assistant"
     ),
-    version="0.4.0",
+    version="0.5.0",
 )
 
 
@@ -37,6 +48,8 @@ app.add_middleware(
     allow_origins=[
         "http://localhost:5173",
         "http://127.0.0.1:5173",
+        "http://localhost:4173",
+        "http://127.0.0.1:4173",
     ],
     allow_credentials=True,
     allow_methods=["*"],
@@ -107,6 +120,7 @@ def recover_stale_calls() -> None:
 
 
 recover_stale_calls()
+initialize_auth_database()
 
 
 @app.get("/health")
@@ -114,8 +128,65 @@ def health_check():
     return {
         "status": "ok",
         "service": "TCA API",
-        "version": "0.4.0",
+        "version": "0.5.0",
     }
+
+
+@app.post(
+    "/auth/signup",
+    response_model=AuthResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def signup(request: SignupRequest):
+    try:
+        user = create_user(
+            name=request.name,
+            email=request.email,
+            password=request.password,
+        )
+    except ValueError as error:
+        message = str(error)
+        status_code = 409 if "already exists" in message.lower() else 400
+        raise HTTPException(
+            status_code=status_code,
+            detail=message,
+        ) from error
+
+    return AuthResponse(
+        access_token=create_access_token(user),
+        user=AuthUserResponse(**user.to_public_dict()),
+    )
+
+
+@app.post(
+    "/auth/login",
+    response_model=AuthResponse,
+)
+def login(request: LoginRequest):
+    user = authenticate_user(
+        email=request.email,
+        password=request.password,
+    )
+
+    if user is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Email or password is incorrect.",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    return AuthResponse(
+        access_token=create_access_token(user),
+        user=AuthUserResponse(**user.to_public_dict()),
+    )
+
+
+@app.get(
+    "/auth/me",
+    response_model=AuthUserResponse,
+)
+def current_user(user=Depends(get_current_user)):
+    return AuthUserResponse(**user.to_public_dict())
 
 
 @app.post(
