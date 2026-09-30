@@ -12,6 +12,11 @@ from backend.app.auth import (
     initialize_auth_database,
     update_user_profile,
 )
+from backend.app.cloud import (
+    cloud_health,
+    initialize_cloud_foundation,
+    sync_cloud_user,
+)
 from backend.app.models import (
     AskTCARequest,
     AskTCAResponse,
@@ -123,6 +128,7 @@ def recover_stale_calls() -> None:
 
 recover_stale_calls()
 initialize_auth_database()
+cloud_startup_status = initialize_cloud_foundation()
 
 
 @app.get("/health")
@@ -131,7 +137,13 @@ def health_check():
         "status": "ok",
         "service": "TCA API",
         "version": "0.5.0",
+        "cloud": cloud_startup_status,
     }
+
+
+@app.get("/health/cloud")
+def cloud_health_check():
+    return cloud_health()
 
 
 @app.post(
@@ -155,6 +167,12 @@ def signup(request: SignupRequest):
         ) from error
 
     call_repository.claim_legacy_calls(user.id)
+    try:
+        sync_cloud_user(user)
+    except Exception:
+        # Cloud Foundation is a preparation layer. Local auth remains
+        # authoritative until the cloud-memory/auth migration is enabled.
+        pass
 
     return AuthResponse(
         access_token=create_access_token(user),
@@ -180,6 +198,10 @@ def login(request: LoginRequest):
         )
 
     call_repository.claim_legacy_calls(user.id)
+    try:
+        sync_cloud_user(user)
+    except Exception:
+        pass
 
     return AuthResponse(
         access_token=create_access_token(user),
@@ -214,6 +236,11 @@ def update_current_user(
             status_code=400,
             detail=str(error),
         ) from error
+
+    try:
+        sync_cloud_user(updated)
+    except Exception:
+        pass
 
     return AuthUserResponse(**updated.to_public_dict())
 
