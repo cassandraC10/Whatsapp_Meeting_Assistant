@@ -127,28 +127,28 @@ def _object_storage_client():
 
 
 def _migration_statements() -> list[str]:
-    migration_file = (
-        MIGRATIONS_DIRECTORY
-        / "001_cloud_foundation.sql"
+    migration_files = sorted(
+        MIGRATIONS_DIRECTORY.glob("*.sql")
     )
 
-    if not migration_file.exists():
+    if not migration_files:
         raise RuntimeError(
-            f"Cloud migration file is missing: {migration_file}"
+            f"No cloud migration files found in {MIGRATIONS_DIRECTORY}"
         )
 
-    sql = migration_file.read_text(
-        encoding="utf-8"
-    )
+    statements: list[str] = []
 
-    # The foundation migration intentionally contains simple DDL statements
-    # only, so semicolon splitting is sufficient and keeps the runtime free
-    # from a migration framework dependency.
-    return [
-        statement.strip()
-        for statement in sql.split(";")
-        if statement.strip()
-    ]
+    for migration_file in migration_files:
+        sql = migration_file.read_text(
+            encoding="utf-8"
+        )
+        statements.extend(
+            statement.strip()
+            for statement in sql.split(";")
+            if statement.strip()
+        )
+
+    return statements
 
 
 def initialize_cloud_foundation() -> dict[str, Any]:

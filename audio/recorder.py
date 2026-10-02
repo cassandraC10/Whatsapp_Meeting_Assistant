@@ -287,12 +287,13 @@ class MeetingRecorder:
             self.system_thread.is_alive(),
         )
 
-        # PyAudio/WASAPI can occasionally block inside stream.read().
-        # Stopping the stream from this thread releases that blocking read.
+        # Callback-mode system recording should shut down without a blocked
+        # stream.read(). Keep this fallback for a driver/device that ignores
+        # the normal stop request.
         if self.system_thread.is_alive():
             print(
-                "System audio is still blocked. "
-                "Forcing WASAPI stream shutdown..."
+                "System audio is still alive. "
+                "Forcing stream shutdown..."
             )
 
             self._force_close_system_stream()
@@ -460,20 +461,29 @@ class MeetingRecorder:
         )
 
     def _record_system_audio(self) -> None:
+        """
+        Record Windows system audio using a PortAudio callback.
+
+        The previous implementation used blocking stream.read(). On some
+        Windows/WASAPI loopback devices that read can remain blocked even
+        after stop_stream()/close(), which prevents /finish from returning.
+
+        Callback mode keeps the recording thread out of the blocking read
+        entirely, so shutdown can stop and close the stream deterministically.
+        """
         p = pyaudio.PyAudio()
 
         self.system_audio_interface = p
 
-        frames = []
+        frames: list[bytes] = []
+        callback_error: list[Exception] = []
 
         try:
             print(
                 "System audio recording thread started."
             )
 
-            device = self._find_loopback_device(
-                p
-            )
+            device = self._find_loopback_device(p)
 
             sample_rate = int(
                 device["defaultSampleRate"]
@@ -499,6 +509,32 @@ class MeetingRecorder:
                 channels,
             )
 
+            def audio_callback(
+                in_data,
+                frame_count,
+                time_info,
+                status,
+            ):
+                if status:
+                    print(
+                        "System audio callback status:",
+                        status,
+                    )
+
+                if self.stop_event.is_set():
+                    return (
+                        None,
+                        pyaudio.paComplete,
+                    )
+
+                if not self.pause_event.is_set():
+                    frames.append(bytes(in_data))
+
+                return (
+                    None,
+                    pyaudio.paContinue,
+                )
+
             stream = p.open(
                 format=pyaudio.paInt16,
                 channels=channels,
@@ -506,27 +542,48 @@ class MeetingRecorder:
                 input=True,
                 input_device_index=device["index"],
                 frames_per_buffer=BLOCK_SIZE,
+                stream_callback=audio_callback,
             )
 
             self.system_stream = stream
 
-            while not self.stop_event.is_set():
-                try:
-                    data = stream.read(
-                        BLOCK_SIZE,
-                        exception_on_overflow=False,
-                    )
+            stream.start_stream()
 
-                except Exception as error:
-                    if self.stop_event.is_set():
-                        break
+            print(
+                "System audio callback recording started."
+            )
 
-                    raise error
+            # There is deliberately no stream.read() here.
+            # The callback receives audio while this thread simply waits
+            # for the recorder's stop event.
+            while not self.stop_event.wait(0.1):
+                pass
 
-                if self.pause_event.is_set():
-                    continue
+            print(
+                "System audio stop requested."
+            )
 
-                frames.append(data)
+            try:
+                if stream.is_active():
+                    stream.stop_stream()
+            except Exception as error:
+                print(
+                    "System stream stop warning:",
+                    error,
+                )
+
+            try:
+                stream.close()
+            except Exception as error:
+                print(
+                    "System stream close warning:",
+                    error,
+                )
+
+            self.system_stream = None
+
+            if callback_error:
+                raise callback_error[0]
 
             if not frames:
                 raise RuntimeError(

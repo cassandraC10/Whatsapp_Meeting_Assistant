@@ -10,7 +10,7 @@ V0.4/V0.5 recording and local-memory pipeline yet.
   or another S3-compatible provider.
 - Adds an idempotent PostgreSQL foundation migration.
 - Adds a cloud health endpoint: `GET /health/cloud`.
-# - Adds startup cloud initialization when `TCA_CLOUD_ENABLED=true`.
+- Adds startup cloud initialization when `TCA_CLOUD_ENABLED=true`.
 - Adds a safe `TCA_CLOUD_REQUIRED` switch for production fail-fast behavior.
 - Mirrors authenticated users into the cloud foundation `tca_users` table
   when cloud mode is enabled.

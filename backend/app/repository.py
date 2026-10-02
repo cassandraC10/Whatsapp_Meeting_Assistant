@@ -5,6 +5,15 @@ from datetime import datetime, timezone
 from pathlib import Path
 from uuid import NAMESPACE_URL, uuid4, uuid5
 
+from backend.app.cloud import load_cloud_config
+from backend.app.cloud_memory import (
+    cloud_memory_available,
+    delete_cloud_call,
+    get_cloud_call,
+    hydrate_call_from_cloud,
+    list_cloud_calls,
+    sync_call_to_cloud,
+)
 from backend.app.models import (Call, CallStatus, Person, PersonDetail,
                                 PersonTask, Task, TaskOwner)
 
@@ -103,6 +112,16 @@ class CallRepository:
             encoding="utf-8",
         )
 
+        if cloud_memory_available():
+            try:
+                sync_call_to_cloud(
+                    call=call,
+                    call_directory=call_directory,
+                )
+            except Exception:
+                if load_cloud_config().required:
+                    raise
+
     def update_title(
         self,
         call_id: str,
@@ -162,6 +181,19 @@ class CallRepository:
         call_id: str,
         user_id: str | None = None,
     ) -> Call | None:
+        if cloud_memory_available():
+            cloud_call = get_cloud_call(
+                call_id,
+                user_id=user_id,
+            )
+            if cloud_call is not None:
+                hydrate_call_from_cloud(
+                    call_id=cloud_call.id,
+                    user_id=cloud_call.user_id,
+                    directory=self._call_directory(cloud_call.id),
+                )
+                return cloud_call
+
         metadata_file = (
             self._call_directory(
                 call_id
@@ -169,9 +201,7 @@ class CallRepository:
             / "metadata.json"
         )
 
-        if (
-            not metadata_file.exists()
-        ):
+        if not metadata_file.exists():
             return None
 
         data = json.loads(
@@ -191,11 +221,19 @@ class CallRepository:
         self,
         user_id: str | None = None,
     ) -> list[Call]:
+        if cloud_memory_available() and user_id is not None:
+            calls = list_cloud_calls(user_id)
+            for call in calls:
+                hydrate_call_from_cloud(
+                    call_id=call.id,
+                    user_id=call.user_id,
+                    directory=self._call_directory(call.id),
+                )
+            return calls
+
         calls: list[Call] = []
 
-        if (
-            not CALLS_DIRECTORY.exists()
-        ):
+        if not CALLS_DIRECTORY.exists():
             return calls
 
         for directory in (
@@ -342,11 +380,16 @@ class CallRepository:
         self,
         call_id: str,
     ) -> list[Task]:
-        call_directory = (
-            self._call_directory(
-                call_id
-            )
-        )
+        call_directory = self._call_directory(call_id)
+
+        if not call_directory.exists() and cloud_memory_available():
+            call = get_cloud_call(call_id)
+            if call is not None:
+                hydrate_call_from_cloud(
+                    call_id=call.id,
+                    user_id=call.user_id,
+                    directory=call_directory,
+                )
 
         if not call_directory.exists():
             return []
@@ -434,6 +477,29 @@ class CallRepository:
             ),
             encoding="utf-8",
         )
+
+        if cloud_memory_available():
+            metadata_file = call_directory / "metadata.json"
+            call = None
+            if metadata_file.exists():
+                try:
+                    call = Call.model_validate(
+                        json.loads(
+                            metadata_file.read_text(encoding="utf-8")
+                        )
+                    )
+                except (OSError, json.JSONDecodeError, ValueError, TypeError):
+                    call = get_cloud_call(call_id)
+
+            if call is not None:
+                try:
+                    sync_call_to_cloud(
+                        call=call,
+                        call_directory=call_directory,
+                    )
+                except Exception:
+                    if load_cloud_config().required:
+                        raise
 
     def update_task(
         self,
@@ -1006,23 +1072,22 @@ class CallRepository:
     def delete(
         self,
         call_id: str,
+        user_id: str | None = None,
     ) -> bool:
-        call_directory = (
-            self._call_directory(
-                call_id
+        call_directory = self._call_directory(call_id)
+        local_exists = call_directory.exists()
+
+        cloud_deleted = False
+        if cloud_memory_available() and user_id is not None:
+            cloud_deleted = delete_cloud_call(
+                call_id,
+                user_id,
             )
-        )
 
-        if (
-            not call_directory.exists()
-        ):
-            return False
+        if local_exists:
+            shutil.rmtree(call_directory)
 
-        shutil.rmtree(
-            call_directory
-        )
-
-        return True
+        return local_exists or cloud_deleted
 
     def claim_legacy_calls(self, user_id: str) -> int:
         """Assign legacy V0.4 calls without an owner to the first authenticated user.

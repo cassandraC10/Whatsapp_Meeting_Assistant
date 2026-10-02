@@ -623,10 +623,9 @@ def delete_call(
             ),
         )
 
-    deleted = (
-        call_repository.delete(
-            call_id
-        )
+    deleted = call_repository.delete(
+        call_id,
+        user_id=user.id,
     )
 
     if not deleted:

@@ -4,15 +4,20 @@ import os
 import sys
 from pathlib import Path
 
+REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(REPOSITORY_ROOT))
+
 
 def main() -> None:
     # The smoke test must not require cloud credentials or network access.
     os.environ["TCA_CLOUD_ENABLED"] = "false"
-    repository_root = Path(__file__).resolve().parents[1]
-    sys.path.insert(0, str(repository_root))
 
-    from backend.app.cloud import (MIGRATIONS_DIRECTORY, cloud_health,
-                                   load_cloud_config, object_key)
+    from backend.app.cloud import (
+        MIGRATIONS_DIRECTORY,
+        cloud_health,
+        load_cloud_config,
+        object_key,
+    )
 
     config = load_cloud_config()
 
