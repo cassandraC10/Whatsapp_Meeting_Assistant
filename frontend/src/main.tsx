@@ -1,4 +1,4 @@
-import { StrictMode, useEffect, useState } from "react";
+import { StrictMode, useCallback, useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 
 import App from "./App";
@@ -16,6 +16,21 @@ function AuthGate() {
   const [checking, setChecking] = useState(true);
   const [user, setUser] = useState<AuthUser | null>(null);
 
+  const handleSignedIn = useCallback((signedInUser: AuthUser) => {
+    setUser(signedInUser);
+    setChecking(false);
+  }, []);
+
+  const handleSignedOut = useCallback(() => {
+    clearAuthToken();
+    setUser(null);
+    setChecking(false);
+  }, []);
+
+  const handleOnboardingComplete = useCallback((updatedUser: AuthUser) => {
+    setUser(updatedUser);
+  }, []);
+
   useEffect(() => {
     let active = true;
 
@@ -30,12 +45,13 @@ function AuthGate() {
 
       try {
         const currentUser = await getCurrentUser();
+
         if (active) {
           setUser(currentUser);
         }
       } catch {
-        clearAuthToken();
         if (active) {
+          clearAuthToken();
           setUser(null);
         }
       } finally {
@@ -48,8 +64,13 @@ function AuthGate() {
     void checkSession();
 
     function handleAuthExpired() {
+      if (!active) {
+        return;
+      }
+
       clearAuthToken();
       setUser(null);
+      setChecking(false);
     }
 
     window.addEventListener("tca-auth-expired", handleAuthExpired);
@@ -62,7 +83,7 @@ function AuthGate() {
 
   if (checking) {
     return (
-      <main className="auth-screen auth-loading">
+      <main className="auth-screen auth-loading" aria-live="polite">
         <div className="auth-loading-mark">TCA</div>
         <p>Checking your account…</p>
       </main>
@@ -70,14 +91,15 @@ function AuthGate() {
   }
 
   if (!user) {
-    return <AuthScreen />;
+    return <AuthScreen onAuthenticated={handleSignedIn} />;
   }
 
   if (!user.onboarding_completed) {
     return (
       <OnboardingScreen
         user={user}
-        onComplete={setUser}
+        onComplete={handleOnboardingComplete}
+        onSignOut={handleSignedOut}
       />
     );
   }

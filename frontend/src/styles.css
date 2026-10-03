@@ -4439,3 +4439,63 @@ input {
     padding: 26px 22px;
   }
 }
+
+/* V0.5 Feature 6 — frontend auth/onboarding polish */
+.onboarding-account {
+  display: grid;
+  gap: 3px;
+  margin-top: 18px;
+  padding: 10px 12px;
+  border: 1px solid rgba(78, 112, 166, .12);
+  border-radius: 10px;
+  background: #f7f9fc;
+}
+
+.onboarding-account span {
+  color: #748098;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: .07em;
+  text-transform: uppercase;
+}
+
+.onboarding-account strong {
+  overflow: hidden;
+  color: #27344d;
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.onboarding-footer {
+  display: grid;
+  gap: 10px;
+}
+
+.onboarding-signout {
+  width: fit-content;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #64718a;
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.onboarding-signout:hover {
+  color: #14213d;
+  text-decoration: underline;
+}
+
+.onboarding-signout:disabled {
+  opacity: .5;
+  cursor: wait;
+}
+
+@media (max-width: 720px) {
+  .onboarding-account {
+    margin-top: 16px;
+  }
+}

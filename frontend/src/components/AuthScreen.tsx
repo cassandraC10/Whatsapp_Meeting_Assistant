@@ -5,9 +5,18 @@ import {
   setAuthToken,
   signup,
 } from "../api";
+import type { AuthUser } from "../api";
 
-export function AuthScreen() {
-  const [mode, setMode] = useState<"login" | "signup">("login");
+type AuthMode = "login" | "signup";
+
+type AuthScreenProps = {
+  onAuthenticated: (user: AuthUser) => void;
+};
+
+export function AuthScreen({
+  onAuthenticated,
+}: AuthScreenProps) {
+  const [mode, setMode] = useState<AuthMode>("login");
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -30,7 +39,7 @@ export function AuthScreen() {
         : await login(email, password);
 
       setAuthToken(result.access_token);
-      window.location.reload();
+      onAuthenticated(result.user);
     } catch (requestError) {
       setError(
         requestError instanceof Error
@@ -42,9 +51,18 @@ export function AuthScreen() {
     }
   }
 
-  function switchMode(nextMode: "login" | "signup") {
+  function switchMode(nextMode: AuthMode) {
+    if (busy || nextMode === mode) {
+      return;
+    }
+
     setMode(nextMode);
     setError("");
+    setPassword("");
+
+    if (nextMode === "login") {
+      setName("");
+    }
   }
 
   return (
@@ -60,18 +78,22 @@ export function AuthScreen() {
           <h1 id="auth-title">
             {mode === "login" ? "Welcome back." : "Start your TCA memory."}
           </h1>
-          <p>
-            Your conversations become useful memory.
-          </p>
+          <p>Your conversations become useful memory.</p>
         </div>
 
-        <div className="auth-tabs" role="tablist" aria-label="Authentication">
+        <div
+          className="auth-tabs"
+          role="tablist"
+          aria-label="Authentication"
+        >
           <button
             type="button"
             className={mode === "login" ? "active" : ""}
             onClick={() => switchMode("login")}
             role="tab"
             aria-selected={mode === "login"}
+            aria-controls="auth-form"
+            disabled={busy}
           >
             Log in
           </button>
@@ -81,12 +103,18 @@ export function AuthScreen() {
             onClick={() => switchMode("signup")}
             role="tab"
             aria-selected={mode === "signup"}
+            aria-controls="auth-form"
+            disabled={busy}
           >
             Create account
           </button>
         </div>
 
-        <form className="auth-form" onSubmit={submit}>
+        <form
+          id="auth-form"
+          className="auth-form"
+          onSubmit={submit}
+        >
           {mode === "signup" && (
             <label>
               <span>Name</span>
@@ -98,6 +126,7 @@ export function AuthScreen() {
                 minLength={2}
                 maxLength={120}
                 required
+                autoFocus
               />
             </label>
           )}
@@ -111,6 +140,7 @@ export function AuthScreen() {
               autoComplete="email"
               placeholder="you@example.com"
               required
+              autoFocus={mode === "login"}
             />
           </label>
 
@@ -123,6 +153,7 @@ export function AuthScreen() {
               autoComplete={mode === "login" ? "current-password" : "new-password"}
               placeholder="At least 8 characters"
               minLength={8}
+              maxLength={200}
               required
             />
           </label>
@@ -139,7 +170,9 @@ export function AuthScreen() {
             disabled={busy}
           >
             {busy
-              ? "Please wait…"
+              ? mode === "login"
+                ? "Signing in…"
+                : "Creating account…"
               : mode === "login"
                 ? "Log in"
                 : "Create account"}
@@ -147,7 +180,8 @@ export function AuthScreen() {
         </form>
 
         <p className="auth-footnote">
-          Private beta. Your account is the identity foundation for your saved conversations.
+          Your account keeps your saved conversations and identity separate from
+          other private-beta users.
         </p>
       </section>
     </main>

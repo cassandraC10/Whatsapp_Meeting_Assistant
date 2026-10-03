@@ -1,16 +1,21 @@
 import { useState } from "react";
 
 import type { AuthUser } from "../api";
-import { updateCurrentUserProfile } from "../api";
+import {
+  clearAuthToken,
+  updateCurrentUserProfile,
+} from "../api";
 
 type OnboardingScreenProps = {
   user: AuthUser;
   onComplete: (user: AuthUser) => void;
+  onSignOut: () => void;
 };
 
 export function OnboardingScreen({
   user,
   onComplete,
+  onSignOut,
 }: OnboardingScreenProps) {
   const [name, setName] = useState(user.name);
   const [busy, setBusy] = useState(false);
@@ -40,12 +45,28 @@ export function OnboardingScreen({
     }
   }
 
+  function signOut() {
+    if (busy) {
+      return;
+    }
+
+    clearAuthToken();
+    onSignOut();
+  }
+
+  const previewName = name.trim() || "You";
+
   return (
     <main className="onboarding-screen">
       <section className="onboarding-card" aria-labelledby="onboarding-title">
         <div className="auth-brand">
           <span className="auth-brand-mark">TCA</span>
           <span>The Call Assistant</span>
+        </div>
+
+        <div className="onboarding-account">
+          <span>Signed in as</span>
+          <strong>{user.email}</strong>
         </div>
 
         <div className="onboarding-copy">
@@ -74,10 +95,11 @@ export function OnboardingScreen({
           <div className="onboarding-identity-card">
             <span className="onboarding-identity-dot" aria-hidden="true" />
             <div>
-              <strong>{name.trim() || "You"}</strong>
+              <strong>{previewName}</strong>
               <p>
                 TCA will recognise this as the local speaker in your saved
-                conversations.
+                conversations and use <strong>I</strong> / <strong>my</strong>
+                when referring to you in memory.
               </p>
             </div>
           </div>
@@ -93,10 +115,21 @@ export function OnboardingScreen({
           </button>
         </form>
 
-        <p className="auth-footnote">
-          Your identity stays attached to your account. It is not guessed from
-          the recording.
-        </p>
+        <div className="onboarding-footer">
+          <p className="auth-footnote">
+            Your identity stays attached to your account. It is not guessed
+            from the recording.
+          </p>
+
+          <button
+            type="button"
+            className="onboarding-signout"
+            onClick={signOut}
+            disabled={busy}
+          >
+            Use a different account
+          </button>
+        </div>
       </section>
     </main>
   );

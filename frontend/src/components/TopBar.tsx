@@ -49,7 +49,7 @@ export function TopBar({
 
   function signOut() {
     clearAuthToken();
-    window.location.reload();
+    window.dispatchEvent(new Event("tca-auth-expired"));
   }
 
   return (
