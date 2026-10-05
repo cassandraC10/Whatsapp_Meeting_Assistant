@@ -1,47 +1,72 @@
-# TCA V0.4 — Loom-style Windows Floating Capture
+# TCA — Windows authenticated Capture companion
 
-This version keeps the native floating bubble on Windows and moves the capture
-flow into the bubble itself.
+This companion provides the Windows Loom-style floating Capture button for the
+V0.5 private beta.
+
+## V0.5 Feature 7 — Electron authenticated capture
+
+The companion can now be connected directly to the currently signed-in TCA
+browser account without copying a bearer token into the URL.
 
 Flow:
 
-Bubble -> consent/title -> Start recording -> Pause/Resume -> Finish ->
-processing -> open TCA
+Browser TCA -> Capture button -> short-lived one-time handoff code ->
+`tca-capture://` -> Electron -> backend exchange -> encrypted local token ->
+authenticated Capture.
 
-The browser is NOT opened when the user starts a recording.
+The handoff code is single-use and expires after two minutes. The resulting
+access token is stored with Electron `safeStorage` when Windows encryption is
+available.
 
-The companion talks directly to the local FastAPI backend at
-http://127.0.0.1:8000, while the existing TCA web app remains responsible for
-the full memory/history experience.
+The companion still supports direct email/password sign-in as a fallback.
 
-The supplied icon-512.png is used as the Windows tray/app icon.
+If the account has not completed TCA identity onboarding, Capture will ask the
+user to finish setup in the web app before recording can begin.
 
-## Apply
+## Development
 
-Replace the files in your existing `TCA_V0.4_FloatingCapture_Windows` folder
-with the files in this package. A new `src/bubble.js` file is included.
+Keep the backend running on `127.0.0.1:8000` and the frontend on
+`localhost:5173`.
 
-Do NOT replace the frontend package.json.
+From this folder:
 
-Then from TCA_V0.4_FloatingCapture_Windows:
-
+```powershell
 npm start
+```
 
-You do not need to reinstall Electron if v44.3.0 is already installed.
+Electron 44.3.0 is pinned in `package.json`.
 
-## Test
+## Authenticated Capture E2E
 
-1. Keep the backend running on 127.0.0.1:8000.
-2. Keep the frontend running on localhost:5173 if you want TCA available
-   after processing.
-3. Start the companion.
-4. Click the floating blue bubble.
-5. Enter an optional title.
-6. Confirm that everyone knows they are being recorded.
-7. Click Start recording.
-8. Pause/resume and finish.
-9. The companion processes the saved call.
-10. TCA opens after processing completes.
+1. Start the backend.
+2. Start the frontend.
+3. Start this Electron companion.
+4. Sign into TCA in the browser.
+5. Click **Capture** in the TCA top bar.
+6. The floating companion should open as the same signed-in user.
+7. Click the bubble and confirm the panel says **Signed in as <your name>**.
+8. Give consent and record a short real conversation.
+9. Pause/resume once if desired.
+10. Finish the call.
+11. The companion should process it and open TCA.
+12. Verify the saved conversation belongs to the same account.
 
-If the backend is not running, the native capture panel will show the error
-instead of silently doing nothing.
+## Account switching
+
+Use **Switch account** in the companion or **Sign out of Capture** from the
+tray menu. This clears the locally stored companion token.
+
+## Production packaging
+
+The Electron builder configuration registers the `tca-capture://` protocol
+for the packaged Windows application.
+
+```powershell
+npm run dist
+```
+
+or:
+
+```powershell
+npm run dist:portable
+```

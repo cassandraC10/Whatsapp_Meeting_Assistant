@@ -79,6 +79,28 @@ export function getCurrentUser(): Promise<AuthUser> {
   );
 }
 
+export interface CaptureHandoffResponse {
+  code: string;
+  expires_at: number;
+}
+
+export function createCaptureHandoff(): Promise<CaptureHandoffResponse> {
+  return request<CaptureHandoffResponse>(
+    "/auth/capture-handoff",
+    {
+      method: "POST",
+      headers: {
+        "Accept": "application/json",
+      },
+    },
+  );
+}
+
+export function openCaptureCompanion(code: string): void {
+  const url = `tca-capture://auth?code=${encodeURIComponent(code)}`;
+  window.location.assign(url);
+}
+
 export function updateCurrentUserProfile(
   name: string,
   onboardingCompleted = true,

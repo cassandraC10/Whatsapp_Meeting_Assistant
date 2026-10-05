@@ -15,11 +15,19 @@ const path = require("path");
 const DEFAULT_TCA_URL = "http://localhost:5173/";
 const API_BASE_URL = "http://127.0.0.1:8000";
 const AUTH_FILE_NAME = "auth-token.bin";
+const PROTOCOL_SCHEME = "tca-capture";
+
+const gotSingleInstanceLock = app.requestSingleInstanceLock();
+
+if (!gotSingleInstanceLock) {
+  app.quit();
+}
 
 let bubbleWindow = null;
 let tray = null;
 let isQuitting = false;
 let authToken = null;
+let pendingCaptureHandoffCode = null;
 
 let captureState = "idle";
 let activeCall = null;
@@ -81,8 +89,6 @@ function saveStoredToken(token) {
     return;
   }
 
-  // Windows should normally have Electron safeStorage available. This fallback
-  // keeps local development functional on environments without encryption.
   fs.writeFileSync(authFilePath(), token, "utf8");
 }
 
@@ -241,9 +247,15 @@ function createBubble() {
   bubbleWindow.setAlwaysOnTop(true, "floating");
   bubbleWindow.loadFile(path.join(__dirname, "bubble.html"));
 
-  bubbleWindow.once("ready-to-show", () => {
+  bubbleWindow.once("ready-to-show", async () => {
     positionBubble();
     bubbleWindow.showInactive();
+
+    if (pendingCaptureHandoffCode) {
+      const code = pendingCaptureHandoffCode;
+      pendingCaptureHandoffCode = null;
+      await exchangeCaptureHandoff(code);
+    }
   });
 
   bubbleWindow.on("closed", () => {
@@ -261,8 +273,8 @@ function resizeAndPosition() {
   }
 }
 
-async function openTca() {
-  await shell.openExternal(getTcaUrl(false));
+async function openTca(capture = false) {
+  await shell.openExternal(getTcaUrl(capture));
 }
 
 async function openSignup() {
@@ -286,12 +298,12 @@ function createTray() {
       {
         label: "Capture conversation",
         click: () => {
-          expandCapture();
+          void expandCapture();
         },
       },
       {
         label: "Open TCA",
-        click: () => void openTca(),
+        click: () => void openTca(false),
       },
       {
         label: "Create account",
@@ -325,7 +337,7 @@ function createTray() {
   );
 
   tray.on("click", () => {
-    expandCapture();
+    void expandCapture();
   });
 }
 
@@ -343,6 +355,100 @@ function resetToIdle() {
   }
 }
 
+function parseCaptureProtocolUrl(value) {
+  if (!value || !value.startsWith(`${PROTOCOL_SCHEME}://`)) {
+    return null;
+  }
+
+  try {
+    const url = new URL(value);
+    if (url.hostname !== "auth") {
+      return null;
+    }
+
+    const code = url.searchParams.get("code")?.trim();
+    return code || null;
+  } catch {
+    return null;
+  }
+}
+
+function extractProtocolUrl(argv) {
+  return argv.find((argument) =>
+    typeof argument === "string"
+    && argument.startsWith(`${PROTOCOL_SCHEME}://`),
+  ) || null;
+}
+
+async function exchangeCaptureHandoff(code) {
+  try {
+    const response = await fetch(apiUrl("/auth/capture-handoff/exchange"), {
+      method: "POST",
+      headers: {
+        Accept: "application/json",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ code }),
+    });
+
+    if (!response.ok) {
+      let message = "This TCA connection has expired. Please connect Capture again.";
+      try {
+        const data = await response.json();
+        if (data?.detail) {
+          message = String(data.detail);
+        }
+      } catch {
+        // Keep fallback.
+      }
+
+      setCaptureState("login", { error: message });
+      resizeAndPosition();
+      return;
+    }
+
+    const result = await response.json();
+    setAuthToken(result.access_token);
+
+    if (!result.user?.onboarding_completed) {
+      setCaptureState("setup", {
+        user: result.user,
+        error: "Finish your TCA identity setup before using Capture.",
+      });
+    } else {
+      setCaptureState("consent", {
+        user: result.user,
+        error: "",
+      });
+    }
+
+    resizeAndPosition();
+  } catch (error) {
+    setCaptureState("login", {
+      error:
+        error instanceof Error
+          ? error.message
+          : "Could not connect this Capture companion.",
+    });
+    resizeAndPosition();
+  }
+}
+
+async function handleCaptureProtocolUrl(value) {
+  const code = parseCaptureProtocolUrl(value);
+  if (!code) {
+    return;
+  }
+
+  if (!bubbleWindow || bubbleWindow.isDestroyed()) {
+    pendingCaptureHandoffCode = code;
+    createBubble();
+    return;
+  }
+
+  await exchangeCaptureHandoff(code);
+}
+
 async function expandCapture() {
   if (!bubbleWindow || bubbleWindow.isDestroyed()) {
     createBubble();
@@ -353,6 +459,18 @@ async function expandCapture() {
     if (isAuthenticated()) {
       try {
         const result = await apiRequest("/auth/me");
+
+        if (!result.onboarding_completed) {
+          captureState = "setup";
+          resizeAndPosition();
+          bubbleWindow.webContents.send("capture-state", {
+            state: captureState,
+            user: result,
+            error: "Finish your TCA identity setup before using Capture.",
+          });
+          return;
+        }
+
         captureState = "consent";
         resizeAndPosition();
         bubbleWindow.webContents.send("capture-state", {
@@ -392,6 +510,14 @@ async function loginFromCompanion({ email, password }) {
     });
 
     setAuthToken(result.access_token);
+
+    if (!result.user?.onboarding_completed) {
+      setCaptureState("setup", {
+        user: result.user,
+        error: "Finish your TCA identity setup before using Capture.",
+      });
+      return;
+    }
 
     setCaptureState("consent", {
       user: result.user,
@@ -459,8 +585,8 @@ async function startRecording({ title, consentConfirmed }) {
 
 async function finishRecording() {
   if (
-    !activeCall ||
-    (captureState !== "recording" && captureState !== "paused")
+    !activeCall
+    || (captureState !== "recording" && captureState !== "paused")
   ) {
     return;
   }
@@ -502,7 +628,7 @@ async function finishRecording() {
 
     setTimeout(() => {
       resetToIdle();
-      void openTca();
+      void openTca(false);
     }, 900);
   } catch (error) {
     stopTimer();
@@ -570,11 +696,12 @@ async function pauseResumeRecording() {
 
 async function cancelCapture() {
   if (
-    captureState === "recording" ||
-    captureState === "paused" ||
-    captureState === "starting" ||
-    captureState === "finishing" ||
-    captureState === "processing"
+    captureState === "recording"
+    || captureState === "paused"
+    || captureState === "starting"
+    || captureState === "finishing"
+    || captureState === "processing"
+    || captureState === "logging-in"
   ) {
     return;
   }
@@ -594,13 +721,17 @@ ipcMain.on("capture-signup", () => {
   void openSignup();
 });
 
+ipcMain.on("capture-open-tca", () => {
+  void openTca(true);
+});
+
 ipcMain.on("capture-switch-account", () => {
   if (
-    captureState === "recording" ||
-    captureState === "paused" ||
-    captureState === "starting" ||
-    captureState === "finishing" ||
-    captureState === "processing"
+    captureState === "recording"
+    || captureState === "paused"
+    || captureState === "starting"
+    || captureState === "finishing"
+    || captureState === "processing"
   ) {
     return;
   }
@@ -635,21 +766,63 @@ ipcMain.on("capture-cancel", () => {
   void cancelCapture();
 });
 
-app.whenReady().then(() => {
-  app.setAppUserModelId("com.tca.floatingcapture");
+function registerCaptureProtocol() {
+  if (process.defaultApp) {
+    const entry = process.argv[1]
+      ? path.resolve(process.argv[1])
+      : path.resolve(__dirname, "..", "package.json");
 
-  authToken = loadStoredToken();
+    app.setAsDefaultProtocolClient(
+      PROTOCOL_SCHEME,
+      process.execPath,
+      [entry],
+    );
+  } else {
+    app.setAsDefaultProtocolClient(PROTOCOL_SCHEME);
+  }
+}
 
-  createBubble();
-  createTray();
+if (gotSingleInstanceLock) {
+  app.on("second-instance", (_event, commandLine) => {
+    const protocolUrl = extractProtocolUrl(commandLine);
 
-  screen.on("display-metrics-changed", positionBubble);
-  screen.on("display-added", positionBubble);
-  screen.on("display-removed", positionBubble);
+    if (protocolUrl) {
+      void handleCaptureProtocolUrl(protocolUrl);
+    }
 
-  app.on("activate", () => {
-    createBubble();
+    if (bubbleWindow && !bubbleWindow.isDestroyed()) {
+      bubbleWindow.show();
+      bubbleWindow.focus();
+    }
   });
+
+  app.whenReady().then(async () => {
+    app.setAppUserModelId("com.tca.floatingcapture");
+    registerCaptureProtocol();
+
+    authToken = loadStoredToken();
+
+    createBubble();
+    createTray();
+
+    screen.on("display-metrics-changed", positionBubble);
+    screen.on("display-added", positionBubble);
+    screen.on("display-removed", positionBubble);
+
+    app.on("activate", () => {
+      createBubble();
+    });
+
+    const initialProtocolUrl = extractProtocolUrl(process.argv);
+    if (initialProtocolUrl) {
+      await handleCaptureProtocolUrl(initialProtocolUrl);
+    }
+  });
+}
+
+app.on("open-url", (event, url) => {
+  event.preventDefault();
+  void handleCaptureProtocolUrl(url);
 });
 
 app.on("before-quit", () => {

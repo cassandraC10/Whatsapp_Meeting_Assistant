@@ -5,7 +5,9 @@ import type {
 
 import {
   clearAuthToken,
+  createCaptureHandoff,
   getCurrentUser,
+  openCaptureCompanion,
 } from "../api";
 
 type Theme =
@@ -28,6 +30,7 @@ export function TopBar({
   onPeople,
 }: TopBarProps) {
   const [userName, setUserName] = useState("");
+  const [connectingCapture, setConnectingCapture] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -47,9 +50,24 @@ export function TopBar({
     };
   }, []);
 
+  async function connectCapture() {
+    if (connectingCapture) {
+      return;
+    }
+
+    setConnectingCapture(true);
+
+    try {
+      const handoff = await createCaptureHandoff();
+      openCaptureCompanion(handoff.code);
+    } catch {
+      setConnectingCapture(false);
+    }
+  }
+
   function signOut() {
     clearAuthToken();
-    window.dispatchEvent(new Event("tca-auth-expired"));
+    window.location.reload();
   }
 
   return (
@@ -112,6 +130,16 @@ export function TopBar({
             {userName}
           </span>
         )}
+
+        <button
+          className="capture-connect-button"
+          type="button"
+          onClick={() => void connectCapture()}
+          disabled={connectingCapture}
+          title="Connect the Windows floating Capture to this account"
+        >
+          {connectingCapture ? "Connecting…" : "Capture"}
+        </button>
 
         <button
           className="theme-toggle"

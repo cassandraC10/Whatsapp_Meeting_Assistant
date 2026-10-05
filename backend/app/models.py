@@ -246,3 +246,12 @@ class AuthResponse(BaseModel):
     access_token: str
     token_type: str = "bearer"
     user: AuthUserResponse
+
+
+class CaptureHandoffResponse(BaseModel):
+    code: str
+    expires_at: int
+
+
+class CaptureHandoffExchangeRequest(BaseModel):
+    code: str = Field(min_length=1, max_length=256)

@@ -22,6 +22,7 @@ AUTH_DATABASE_PATH.parent.mkdir(parents=True, exist_ok=True)
 
 PBKDF2_ITERATIONS = 310_000
 TOKEN_TTL_SECONDS = 60 * 60 * 24
+CAPTURE_HANDOFF_TTL_SECONDS = 120
 EMAIL_PATTERN = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 
 bearer_scheme = HTTPBearer(auto_error=False)
@@ -83,6 +84,18 @@ def initialize_auth_database() -> None:
             connection.execute(
                 "ALTER TABLE users ADD COLUMN onboarding_completed INTEGER NOT NULL DEFAULT 0"
             )
+
+        connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS capture_handoffs (
+                code_hash TEXT PRIMARY KEY,
+                user_id TEXT NOT NULL,
+                created_at INTEGER NOT NULL,
+                expires_at INTEGER NOT NULL,
+                used_at INTEGER
+            )
+            """
+        )
 
         connection.commit()
 
@@ -284,6 +297,72 @@ def _base64url(value: bytes) -> str:
 def _base64url_decode(value: str) -> bytes:
     padding = "=" * (-len(value) % 4)
     return base64.urlsafe_b64decode((value + padding).encode("ascii"))
+
+
+def _hash_capture_handoff(code: str) -> str:
+    return hashlib.sha256(code.encode("utf-8")).hexdigest()
+
+
+def create_capture_handoff(user: AuthUser) -> tuple[str, int]:
+    """Create a short-lived, single-use code for authenticating the native capture companion."""
+    initialize_auth_database()
+
+    now = int(time.time())
+    expires_at = now + CAPTURE_HANDOFF_TTL_SECONDS
+    code = secrets.token_urlsafe(32)
+    code_hash = _hash_capture_handoff(code)
+
+    with _connect() as connection:
+        connection.execute(
+            "DELETE FROM capture_handoffs WHERE expires_at <= ? OR used_at IS NOT NULL",
+            (now,),
+        )
+        connection.execute(
+            """
+            INSERT INTO capture_handoffs (
+                code_hash, user_id, created_at, expires_at, used_at
+            ) VALUES (?, ?, ?, ?, NULL)
+            """,
+            (code_hash, user.id, now, expires_at),
+        )
+        connection.commit()
+
+    return code, expires_at
+
+
+def exchange_capture_handoff(code: str) -> AuthUser | None:
+    """Exchange a native-capture handoff code exactly once."""
+    initialize_auth_database()
+
+    clean_code = code.strip()
+    if not clean_code or len(clean_code) > 256:
+        return None
+
+    now = int(time.time())
+    code_hash = _hash_capture_handoff(clean_code)
+
+    with _connect() as connection:
+        connection.execute("BEGIN IMMEDIATE")
+        row = connection.execute(
+            """
+            SELECT user_id, expires_at, used_at
+            FROM capture_handoffs
+            WHERE code_hash = ?
+            """,
+            (code_hash,),
+        ).fetchone()
+
+        if row is None or row["used_at"] is not None or int(row["expires_at"]) <= now:
+            connection.rollback()
+            return None
+
+        connection.execute(
+            "UPDATE capture_handoffs SET used_at = ? WHERE code_hash = ?",
+            (now, code_hash),
+        )
+        connection.commit()
+
+    return get_user(str(row["user_id"]))
 
 
 def create_access_token(user: AuthUser) -> str:

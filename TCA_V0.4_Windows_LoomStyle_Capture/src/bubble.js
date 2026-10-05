@@ -117,6 +117,33 @@ function renderBody() {
     `;
   }
 
+  if (current.state === "setup") {
+    return `
+      <p class="eyebrow">Finish setup</p>
+      <h1>One quick thing.</h1>
+      <p class="copy">
+        TCA needs your identity before Capture can save conversations to your account.
+      </p>
+
+      ${current.user?.name ? `
+        <div class="signed-in-as">
+          <span class="signed-in-dot" aria-hidden="true"></span>
+          <span>Signed in as <strong>${escapeHtml(current.user.name)}</strong></span>
+        </div>
+      ` : ""}
+
+      <button id="open-tca" class="primary">
+        Finish setup in TCA
+      </button>
+
+      <button id="switch-account" class="secondary auth-switch-button">
+        Switch account
+      </button>
+
+      ${current.error ? `<div class="error">${escapeHtml(current.error)}</div>` : ""}
+    `;
+  }
+
   if (current.state === "consent") {
     return `
       <p class="eyebrow">Quick capture</p>
@@ -282,6 +309,47 @@ function bindState() {
     });
 
     setTimeout(() => email.focus(), 0);
+    return;
+  }
+
+  if (current.state === "setup") {
+    return `
+      <p class="eyebrow">Finish setup</p>
+      <h1>One quick thing.</h1>
+      <p class="copy">
+        TCA needs your identity before Capture can save conversations to your account.
+      </p>
+
+      ${current.user?.name ? `
+        <div class="signed-in-as">
+          <span class="signed-in-dot" aria-hidden="true"></span>
+          <span>Signed in as <strong>${escapeHtml(current.user.name)}</strong></span>
+        </div>
+      ` : ""}
+
+      <button id="open-tca" class="primary">
+        Finish setup in TCA
+      </button>
+
+      <button id="switch-account" class="secondary auth-switch-button">
+        Switch account
+      </button>
+
+      ${current.error ? `<div class="error">${escapeHtml(current.error)}</div>` : ""}
+    `;
+  }
+
+  if (current.state === "setup") {
+    document.getElementById("open-tca").addEventListener("click", () => {
+      window.captureBridge.openTca();
+    });
+
+    document
+      .getElementById("switch-account")
+      .addEventListener("click", () => {
+        window.captureBridge.switchAccount();
+      });
+
     return;
   }
 

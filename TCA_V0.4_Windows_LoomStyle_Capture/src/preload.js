@@ -4,6 +4,7 @@ contextBridge.exposeInMainWorld("captureBridge", {
   openCapture: () => ipcRenderer.send("capture-click"),
   login: (payload) => ipcRenderer.send("capture-login", payload),
   openSignup: () => ipcRenderer.send("capture-signup"),
+  openTca: () => ipcRenderer.send("capture-open-tca"),
   switchAccount: () => ipcRenderer.send("capture-switch-account"),
   startRecording: (payload) => ipcRenderer.send("capture-start", payload),
   pauseResume: () => ipcRenderer.send("capture-pause-resume"),

@@ -7,7 +7,9 @@ from backend.app.ask_service import AskTCAService
 from backend.app.auth import (
     authenticate_user,
     create_access_token,
+    create_capture_handoff,
     create_user,
+    exchange_capture_handoff,
     get_current_user,
     initialize_auth_database,
     update_user_profile,
@@ -26,6 +28,8 @@ from backend.app.models import (
     UpdateCallRequest,
     AuthResponse,
     AuthUserResponse,
+    CaptureHandoffExchangeRequest,
+    CaptureHandoffResponse,
     LoginRequest,
     SignupRequest,
     UpdateProfileRequest,
@@ -215,6 +219,39 @@ def login(request: LoginRequest):
 )
 def current_user(user=Depends(get_current_user)):
     return AuthUserResponse(**user.to_public_dict())
+
+
+@app.post(
+    "/auth/capture-handoff",
+    response_model=CaptureHandoffResponse,
+)
+def create_native_capture_handoff(user=Depends(get_current_user)):
+    code, expires_at = create_capture_handoff(user)
+    return CaptureHandoffResponse(
+        code=code,
+        expires_at=expires_at,
+    )
+
+
+@app.post(
+    "/auth/capture-handoff/exchange",
+    response_model=AuthResponse,
+)
+def exchange_native_capture_handoff(
+    request: CaptureHandoffExchangeRequest,
+):
+    user = exchange_capture_handoff(request.code)
+    if user is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="This capture connection has expired or was already used.",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    return AuthResponse(
+        access_token=create_access_token(user),
+        user=AuthUserResponse(**user.to_public_dict()),
+    )
 
 
 @app.patch(
