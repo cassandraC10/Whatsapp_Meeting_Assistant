@@ -1,0 +1,25 @@
+TCA V0.5 Feature 8 — Feedback
+
+Complete replacement/addition package.
+Apply these files at the project root.
+
+Files:
+backend/app/models.py
+backend/app/main.py
+backend/app/cloud.py
+backend/app/event_store.py
+backend/app/feedback.py
+backend/migrations/003_feedback_analytics_foundation.sql
+frontend/src/api.ts
+frontend/src/App.tsx
+frontend/src/styles.css
+frontend/src/components/ConversationFeedback.tsx
+tests/feedback_smoke.py
+README_FEATURE8.md
+
+Validation performed in the package build:
+- Python backend compile passed.
+- tests/feedback_smoke.py passed.
+- Feedback API route wiring was statically verified.
+- Full frontend npm build was not run in this environment because the uploaded package
+  did not include frontend/node_modules and dependency installation was unavailable.

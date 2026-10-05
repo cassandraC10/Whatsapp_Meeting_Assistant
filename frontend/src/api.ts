@@ -285,6 +285,52 @@ export interface FollowUpResponse {
 }
 
 
+export type FeedbackRating =
+  | "helpful"
+  | "needs_work";
+
+export interface FeedbackResponse {
+  id: string;
+  call_id: string;
+  rating: FeedbackRating;
+  comment: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface SubmitFeedbackRequest {
+  rating: FeedbackRating;
+  comment?: string | null;
+}
+
+
+export function getCallFeedback(
+  callId: string
+): Promise<FeedbackResponse | null> {
+  return request<FeedbackResponse | null>(
+    `/calls/${callId}/feedback`
+  );
+}
+
+
+export function submitCallFeedback(
+  callId: string,
+  feedback: SubmitFeedbackRequest
+): Promise<FeedbackResponse> {
+  return request<FeedbackResponse>(
+    `/calls/${callId}/feedback`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Accept": "application/json",
+      },
+      body: JSON.stringify(feedback),
+    }
+  );
+}
+
+
 
 
 async function request<T>(

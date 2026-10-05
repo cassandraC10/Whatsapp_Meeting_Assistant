@@ -19,6 +19,12 @@ from backend.app.cloud import (
     initialize_cloud_foundation,
     sync_cloud_user,
 )
+from backend.app.event_store import initialize_event_store
+from backend.app.feedback import (
+    get_feedback,
+    initialize_feedback_store,
+    submit_feedback,
+)
 from backend.app.models import (
     AskTCARequest,
     AskTCAResponse,
@@ -30,7 +36,9 @@ from backend.app.models import (
     AuthUserResponse,
     CaptureHandoffExchangeRequest,
     CaptureHandoffResponse,
+    FeedbackResponse,
     LoginRequest,
+    SubmitFeedbackRequest,
     SignupRequest,
     UpdateProfileRequest,
     PersonDetail,
@@ -132,6 +140,8 @@ def recover_stale_calls() -> None:
 
 recover_stale_calls()
 initialize_auth_database()
+initialize_event_store()
+initialize_feedback_store()
 cloud_startup_status = initialize_cloud_foundation()
 
 
@@ -1308,6 +1318,65 @@ def generate_call_follow_up(
         "recipient_name": recipient_name,
         "message": message,
     }
+
+
+@app.get(
+    "/calls/{call_id}/feedback",
+    response_model=FeedbackResponse | None,
+)
+def get_call_feedback(
+    call_id: str,
+    user=Depends(get_current_user),
+):
+    call = require_call(
+        call_id,
+        user,
+    )
+
+    if call.status != CallStatus.COMPLETED:
+        raise HTTPException(
+            status_code=409,
+            detail="Feedback is only available for completed conversations.",
+        )
+
+    return get_feedback(
+        user_id=user.id,
+        call_id=call_id,
+    )
+
+
+@app.post(
+    "/calls/{call_id}/feedback",
+    response_model=FeedbackResponse,
+)
+def submit_call_feedback(
+    call_id: str,
+    request: SubmitFeedbackRequest,
+    user=Depends(get_current_user),
+):
+    call = require_call(
+        call_id,
+        user,
+    )
+
+    if call.status != CallStatus.COMPLETED:
+        raise HTTPException(
+            status_code=409,
+            detail="Feedback is only available for completed conversations.",
+        )
+
+    try:
+        return submit_feedback(
+            user_id=user.id,
+            call_id=call_id,
+            rating=request.rating,
+            comment=request.comment,
+        )
+    except ValueError as error:
+        raise HTTPException(
+            status_code=400,
+            detail=str(error),
+        ) from error
 
 
 @app.get(

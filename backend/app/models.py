@@ -218,6 +218,36 @@ class PeopleResponse(BaseModel):
     people: list[Person] = Field(default_factory=list)
 
 
+
+
+class FeedbackRating(
+    str,
+    Enum,
+):
+    HELPFUL = "helpful"
+    NEEDS_WORK = "needs_work"
+
+
+class SubmitFeedbackRequest(
+    BaseModel
+):
+    rating: FeedbackRating
+    comment: str | None = Field(
+        default=None,
+        max_length=2000,
+    )
+
+
+class FeedbackResponse(
+    BaseModel
+):
+    id: str
+    call_id: str
+    rating: FeedbackRating
+    comment: str | None = None
+    created_at: datetime
+    updated_at: datetime
+
 class AuthUserResponse(BaseModel):
     id: str
     email: str

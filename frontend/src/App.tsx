@@ -43,6 +43,7 @@ import type {
 } from "./api";
 
 import { AskTcaEntry } from "./components/AskTcaEntry";
+import { ConversationFeedback } from "./components/ConversationFeedback";
 import { CallRow } from "./components/CallRow";
 import { ListSection } from "./components/ListSection";
 import { TopBar } from "./components/TopBar";
@@ -4797,6 +4798,12 @@ function CallDetail({
                   </div>
                 )}
               </section>
+
+              <ConversationFeedback
+                callId={
+                  call.id
+                }
+              />
 
               <section className="call-detail-ask">
                 <div>

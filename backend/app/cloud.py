@@ -103,6 +103,11 @@ def _database_connection():
     )
 
 
+def cloud_database_connection():
+    """Return a configured cloud PostgreSQL connection for feature services."""
+    return _database_connection()
+
+
 def _object_storage_client():
     config = load_cloud_config()
 
