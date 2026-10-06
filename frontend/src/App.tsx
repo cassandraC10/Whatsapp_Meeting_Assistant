@@ -30,6 +30,7 @@ import {
   generateCallFollowUp,
   getPeople,
   getPerson,
+  getAnalytics,
 } from "./api";
 
 import type {
@@ -40,8 +41,10 @@ import type {
   Task,
   Person,
   PersonDetail,
+  AnalyticsResponse,
 } from "./api";
 
+import { AnalyticsView } from "./components/AnalyticsView";
 import { AskTcaEntry } from "./components/AskTcaEntry";
 import { ConversationFeedback } from "./components/ConversationFeedback";
 import { CallRow } from "./components/CallRow";
@@ -55,7 +58,8 @@ type View =
   | "recording"
   | "processing"
   | "detail"
-  | "people";
+  | "people"
+  | "analytics";
 
 type Theme =
   | "light"
@@ -701,6 +705,31 @@ function App() {
     personError,
     setPersonError,
   ] = useState("");
+
+
+  /*
+   * FEATURE 9 — ANALYTICS
+   */
+
+  const [
+    analytics,
+    setAnalytics,
+  ] = useState<AnalyticsResponse | null>(null);
+
+  const [
+    analyticsLoading,
+    setAnalyticsLoading,
+  ] = useState(false);
+
+  const [
+    analyticsError,
+    setAnalyticsError,
+  ] = useState("");
+
+  const [
+    analyticsDays,
+    setAnalyticsDays,
+  ] = useState(30);
 
 
   useEffect(() => {
@@ -1703,6 +1732,39 @@ function App() {
   }
 
 
+  async function loadAnalytics(
+    days = analyticsDays
+  ) {
+    setAnalyticsLoading(true);
+    setAnalyticsError("");
+
+    try {
+      const result = await getAnalytics(days);
+      setAnalytics(result);
+    } catch (error) {
+      setAnalyticsError(
+        error instanceof Error
+          ? error.message
+          : "Could not load analytics."
+      );
+    } finally {
+      setAnalyticsLoading(false);
+    }
+  }
+
+
+  function openAnalyticsView() {
+    setView("analytics");
+    void loadAnalytics(analyticsDays);
+  }
+
+
+  function returnFromAnalytics() {
+    setView("calls");
+    void loadCalls();
+  }
+
+
   async function openPerson(
     person: Person
   ) {
@@ -2491,6 +2553,31 @@ function App() {
   }
 
 
+  if (
+    view === "analytics"
+  ) {
+    return (
+      <AnalyticsView
+        theme={theme}
+        analytics={analytics}
+        loading={analyticsLoading}
+        error={analyticsError}
+        days={analyticsDays}
+        onDaysChange={(days) => {
+          setAnalyticsDays(days);
+          void loadAnalytics(days);
+        }}
+        onRefresh={() => void loadAnalytics(analyticsDays)}
+        onBack={returnFromAnalytics}
+        onToggleTheme={toggleTheme}
+        onCalls={returnToCalls}
+        onAsk={openAskView}
+        onPeople={openPeopleView}
+      />
+    );
+  }
+
+
   /*
    * PEOPLE
    *
@@ -2904,6 +2991,9 @@ function App() {
         }
         onPeople={
           openPeopleView
+        }
+        onAnalytics={
+          openAnalyticsView
         }
       />
 

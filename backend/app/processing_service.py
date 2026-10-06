@@ -1,3 +1,4 @@
+from backend.app.analytics import reset_ai_context, set_ai_context
 from backend.app.models import (
     Call,
     CallStatus,
@@ -59,6 +60,12 @@ class CallProcessingService:
 
         self.repository.save(
             call
+        )
+
+        ai_context = set_ai_context(
+            user_id=call.user_id or "unknown",
+            call_id=call.id,
+            operation="processing",
         )
 
         try:
@@ -128,6 +135,8 @@ class CallProcessingService:
                 call
             )
 
+            reset_ai_context(ai_context)
+
             return {
                 "call": call,
                 "transcript": (
@@ -142,6 +151,7 @@ class CallProcessingService:
             }
 
         except Exception:
+            reset_ai_context(ai_context)
             call.status = (
                 CallStatus.FAILED
             )

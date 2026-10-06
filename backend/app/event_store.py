@@ -112,6 +112,38 @@ def record_product_event(
         )
         connection.commit()
 
+    # Cloud analytics is optional. Keep the local event write authoritative
+    # for development and let the cloud mirror fail soft so product events
+    # never break the user-facing request.
+    try:
+        from backend.app.cloud import cloud_database_connection, load_cloud_config
+
+        config = load_cloud_config()
+        if config.enabled and config.database_configured:
+            with cloud_database_connection() as connection:
+                with connection.cursor() as cursor:
+                    cursor.execute(
+                        """
+                        INSERT INTO tca_product_events (
+                            id, user_id, event_name, call_id, occurred_at,
+                            properties_json, source
+                        ) VALUES (%s, %s, %s, %s, %s, %s::jsonb, %s)
+                        ON CONFLICT (id) DO NOTHING
+                        """,
+                        (
+                            event_id,
+                            user_id,
+                            clean_event_name,
+                            call_id,
+                            occurred_at,
+                            serialized_properties,
+                            source,
+                        ),
+                    )
+                connection.commit()
+    except Exception:
+        pass
+
     return event_id
 
 

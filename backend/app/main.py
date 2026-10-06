@@ -19,7 +19,8 @@ from backend.app.cloud import (
     initialize_cloud_foundation,
     sync_cloud_user,
 )
-from backend.app.event_store import initialize_event_store
+from backend.app.event_store import initialize_event_store, record_product_event
+from backend.app.analytics import build_analytics_snapshot, initialize_analytics_store, reset_ai_context, set_ai_context
 from backend.app.feedback import (
     get_feedback,
     initialize_feedback_store,
@@ -41,6 +42,7 @@ from backend.app.models import (
     SubmitFeedbackRequest,
     SignupRequest,
     UpdateProfileRequest,
+    AnalyticsResponse,
     PersonDetail,
     PeopleResponse,
     Task,
@@ -142,6 +144,7 @@ recover_stale_calls()
 initialize_auth_database()
 initialize_event_store()
 initialize_feedback_store()
+initialize_analytics_store()
 cloud_startup_status = initialize_cloud_foundation()
 
 
@@ -181,6 +184,11 @@ def signup(request: SignupRequest):
         ) from error
 
     call_repository.claim_legacy_calls(user.id)
+    record_product_event(
+        user_id=user.id,
+        event_name="sign_up",
+        properties={"source": "email"},
+    )
     try:
         sync_cloud_user(user)
     except Exception:
@@ -212,6 +220,11 @@ def login(request: LoginRequest):
         )
 
     call_repository.claim_legacy_calls(user.id)
+    record_product_event(
+        user_id=user.id,
+        event_name="login",
+        properties={"source": "email"},
+    )
     try:
         sync_cloud_user(user)
     except Exception:
@@ -237,6 +250,11 @@ def current_user(user=Depends(get_current_user)):
 )
 def create_native_capture_handoff(user=Depends(get_current_user)):
     code, expires_at = create_capture_handoff(user)
+    record_product_event(
+        user_id=user.id,
+        event_name="capture_opened",
+        properties={"source": "web_capture_button"},
+    )
     return CaptureHandoffResponse(
         code=code,
         expires_at=expires_at,
@@ -272,6 +290,8 @@ def update_current_user(
     request: UpdateProfileRequest,
     user=Depends(get_current_user),
 ):
+    was_onboarded = user.onboarding_completed
+
     try:
         updated = update_user_profile(
             user_id=user.id,
@@ -283,6 +303,15 @@ def update_current_user(
             status_code=400,
             detail=str(error),
         ) from error
+
+    if (
+        request.onboarding_completed
+        and not was_onboarded
+    ):
+        record_product_event(
+            user_id=updated.id,
+            event_name="onboarding_completed",
+        )
 
     try:
         sync_cloud_user(updated)
@@ -303,12 +332,17 @@ def create_call(
     request: CreateCallRequest,
     user=Depends(get_current_user),
 ):
-    return (
-        call_repository.create(
-            title=request.title,
-            user_id=user.id,
-        )
+    call = call_repository.create(
+        title=request.title,
+        user_id=user.id,
     )
+    record_product_event(
+        user_id=user.id,
+        event_name="conversation_created",
+        call_id=call.id,
+        properties={"status": call.status.value},
+    )
+    return call
 
 
 @app.get(
@@ -360,6 +394,12 @@ def search_calls(
         )
     )
 
+    record_product_event(
+        user_id=user.id,
+        event_name="search_used",
+        properties={"query_length": len(query), "result_count": len(results)},
+    )
+
     return {
         "query": query,
         "count": len(
@@ -378,7 +418,7 @@ def ask_tca(
     user=Depends(get_current_user),
 ):
     try:
-        return ask_service.ask(
+        result = ask_service.ask(
             question=(
                 request.question
             ),
@@ -387,6 +427,13 @@ def ask_tca(
             ),
             user_id=user.id,
         )
+        record_product_event(
+            user_id=user.id,
+            event_name="ask_tca_used",
+            call_id=request.call_id,
+            properties={"question_length": len(request.question)},
+        )
+        return result
 
     except RuntimeError as error:
         message = str(
@@ -822,6 +869,12 @@ def start_call_recording(
     call_repository.save(
         call
     )
+    record_product_event(
+        user_id=user.id,
+        event_name="recording_started",
+        call_id=call.id,
+        properties={"title": call.title},
+    )
 
     return call
 
@@ -1072,6 +1125,12 @@ def finish_call_recording(
     call_repository.save(
         call
     )
+    record_product_event(
+        user_id=user.id,
+        event_name="recording_finished",
+        call_id=call.id,
+        properties={"duration_seconds": call.duration_seconds},
+    )
 
     return {
         "call": call,
@@ -1201,14 +1260,31 @@ def process_call(
     call_repository.save(
         call
     )
+    record_product_event(
+        user_id=user.id,
+        event_name="processing_started",
+        call_id=call.id,
+        properties={"duration_seconds": call.duration_seconds},
+    )
 
     try:
-        return (
-            processing_service.process(
-                call,
-                local_speaker_name=user.name,
-            )
+        result = processing_service.process(
+            call,
+            local_speaker_name=user.name,
         )
+        record_product_event(
+            user_id=user.id,
+            event_name="processing_completed",
+            call_id=call.id,
+            properties={"duration_seconds": call.duration_seconds},
+        )
+        record_product_event(
+            user_id=user.id,
+            event_name="conversation_saved",
+            call_id=call.id,
+            properties={"status": call.status.value},
+        )
+        return result
 
     except Exception as error:
         latest_call = (
@@ -1229,6 +1305,12 @@ def process_call(
 
         call_repository.save(
             latest_call
+        )
+        record_product_event(
+            user_id=user.id,
+            event_name="processing_failed",
+            call_id=call_id,
+            properties={"error": str(error)[:500]},
         )
 
         raise HTTPException(
@@ -1301,17 +1383,30 @@ def generate_call_follow_up(
                     recipient_name = name
                     break
 
+    ai_context = set_ai_context(
+        user_id=user.id,
+        call_id=call.id,
+        operation="follow_up",
+    )
+
     try:
         message = generate_follow_up(
             call_directory=call_directory,
             call_title=call.title,
             recipient_name=recipient_name,
         )
+        record_product_event(
+            user_id=user.id,
+            event_name="follow_up_generated",
+            call_id=call.id,
+        )
     except RuntimeError as error:
         raise HTTPException(
             status_code=500,
             detail=str(error),
         ) from error
+    finally:
+        reset_ai_context(ai_context)
 
     return {
         "call_id": call_id,
@@ -1377,6 +1472,46 @@ def submit_call_feedback(
             status_code=400,
             detail=str(error),
         ) from error
+
+
+@app.get(
+    "/analytics",
+    response_model=AnalyticsResponse,
+)
+def get_analytics(
+    days: int = Query(default=30, ge=1, le=365),
+    user=Depends(get_current_user),
+):
+    return build_analytics_snapshot(
+        user_id=user.id,
+        days=days,
+    )
+
+
+@app.get(
+    "/analytics/admin",
+    response_model=AnalyticsResponse,
+)
+def get_admin_analytics(
+    days: int = Query(default=30, ge=1, le=365),
+    user=Depends(get_current_user),
+):
+    configured_admin = (
+        __import__("os").getenv("TCA_ANALYTICS_ADMIN_EMAIL", "")
+        .strip()
+        .casefold()
+    )
+
+    if not configured_admin or user.email.casefold() != configured_admin:
+        raise HTTPException(
+            status_code=403,
+            detail="Analytics admin access is not enabled for this account.",
+        )
+
+    return build_analytics_snapshot(
+        user_id=None,
+        days=days,
+    )
 
 
 @app.get(

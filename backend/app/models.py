@@ -285,3 +285,61 @@ class CaptureHandoffResponse(BaseModel):
 
 class CaptureHandoffExchangeRequest(BaseModel):
     code: str = Field(min_length=1, max_length=256)
+
+
+class AnalyticsEventCount(BaseModel):
+    event_name: str
+    count: int = 0
+
+
+class AnalyticsOperationUsage(BaseModel):
+    operation: str
+    requests: int = 0
+    input_tokens: int = 0
+    output_tokens: int = 0
+    total_tokens: int = 0
+    estimated_cost_usd: float | None = None
+
+
+class AnalyticsOverview(BaseModel):
+    active_days: int = 0
+    conversation_events: int = 0
+    capture_opens: int = 0
+    recordings_started: int = 0
+    recordings_finished: int = 0
+    recording_seconds: float = 0
+    searches: int = 0
+    ask_questions: int = 0
+    feedback_submitted: int = 0
+    feedback_updated: int = 0
+    feedback_helpful: int = 0
+    feedback_needs_work: int = 0
+    feedback_helpful_rate: float | None = None
+
+
+class AnalyticsProcessing(BaseModel):
+    started: int = 0
+    completed: int = 0
+    failed: int = 0
+    success_rate: float | None = None
+
+
+class AnalyticsAIUsage(BaseModel):
+    requests: int = 0
+    input_tokens: int = 0
+    output_tokens: int = 0
+    total_tokens: int = 0
+    estimated_cost_usd: float | None = None
+    pricing_configured: bool = False
+    model: str
+    by_operation: list[AnalyticsOperationUsage] = Field(default_factory=list)
+
+
+class AnalyticsResponse(BaseModel):
+    scope: str
+    period_days: int
+    generated_at: datetime
+    overview: AnalyticsOverview
+    processing: AnalyticsProcessing
+    ai_usage: AnalyticsAIUsage
+    events: list[AnalyticsEventCount] = Field(default_factory=list)

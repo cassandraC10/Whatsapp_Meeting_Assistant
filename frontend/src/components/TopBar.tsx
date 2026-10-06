@@ -20,6 +20,7 @@ type TopBarProps = {
   onCalls?: () => void;
   onAsk?: () => void;
   onPeople?: () => void;
+  onAnalytics?: () => void;
 };
 
 export function TopBar({
@@ -28,6 +29,7 @@ export function TopBar({
   onCalls,
   onAsk,
   onPeople,
+  onAnalytics,
 }: TopBarProps) {
   const [userName, setUserName] = useState("");
   const [connectingCapture, setConnectingCapture] = useState(false);
@@ -118,6 +120,16 @@ export function TopBar({
             onClick={onPeople}
           >
             People
+          </button>
+        )}
+
+        {onAnalytics && (
+          <button
+            className="topbar-nav-button"
+            type="button"
+            onClick={onAnalytics}
+          >
+            Analytics
           </button>
         )}
 

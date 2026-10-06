@@ -704,3 +704,69 @@ export function getPerson(
     `/people/${personId}`
   );
 }
+
+export interface AnalyticsEventCount {
+  event_name: string;
+  count: number;
+}
+
+export interface AnalyticsOperationUsage {
+  operation: string;
+  requests: number;
+  input_tokens: number;
+  output_tokens: number;
+  total_tokens: number;
+  estimated_cost_usd: number | null;
+}
+
+export interface AnalyticsOverview {
+  active_days: number;
+  conversation_events: number;
+  capture_opens: number;
+  recordings_started: number;
+  recordings_finished: number;
+  recording_seconds: number;
+  searches: number;
+  ask_questions: number;
+  feedback_submitted: number;
+  feedback_updated: number;
+  feedback_helpful: number;
+  feedback_needs_work: number;
+  feedback_helpful_rate: number | null;
+}
+
+export interface AnalyticsProcessing {
+  started: number;
+  completed: number;
+  failed: number;
+  success_rate: number | null;
+}
+
+export interface AnalyticsAIUsage {
+  requests: number;
+  input_tokens: number;
+  output_tokens: number;
+  total_tokens: number;
+  estimated_cost_usd: number | null;
+  pricing_configured: boolean;
+  model: string;
+  by_operation: AnalyticsOperationUsage[];
+}
+
+export interface AnalyticsResponse {
+  scope: string;
+  period_days: number;
+  generated_at: string;
+  overview: AnalyticsOverview;
+  processing: AnalyticsProcessing;
+  ai_usage: AnalyticsAIUsage;
+  events: AnalyticsEventCount[];
+}
+
+export function getAnalytics(
+  days = 30,
+): Promise<AnalyticsResponse> {
+  return request<AnalyticsResponse>(
+    `/analytics?days=${encodeURIComponent(String(days))}`,
+  );
+}

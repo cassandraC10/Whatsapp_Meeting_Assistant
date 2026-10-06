@@ -4,6 +4,7 @@ import re
 import time
 from pathlib import Path
 
+from backend.app.analytics import record_gemini_response
 from dotenv import load_dotenv
 from google import genai
 from google.genai import types
@@ -208,6 +209,7 @@ def generate_notes_with_retry(
     prompt,
     config,
     status_callback=None,
+    operation="notes",
 ):
     last_error = None
 
@@ -221,11 +223,16 @@ def generate_notes_with_retry(
                 f"{attempt}/{MAX_RETRIES}..."
             )
 
-            return client.models.generate_content(
+            response = client.models.generate_content(
                 model=MODEL_NAME,
                 contents=prompt,
                 config=config,
             )
+            record_gemini_response(
+                response,
+                operation=operation,
+            )
+            return response
 
         except Exception as error:
             last_error = error
@@ -999,6 +1006,7 @@ SAVED TRANSCRIPT:
         prompt=prompt,
         config=config,
         status_callback=status_callback,
+        operation="follow_up",
     )
 
     if not response.text:

@@ -1,0 +1,24 @@
+TCA V0.5 FEATURE 9 — ANALYTICS
+
+New:
+- backend/app/analytics.py
+- backend/migrations/004_analytics_usage.sql
+- frontend/src/components/AnalyticsView.tsx
+- tests/analytics_smoke.py
+- README_FEATURE9.md
+- FEATURE9_MANIFEST.txt
+
+Updated:
+- backend/app/event_store.py
+- backend/app/main.py
+- backend/app/models.py
+- backend/app/processing_service.py
+- intelligence/summarizer.py
+- transcription/transcriber.py
+- frontend/src/App.tsx
+- frontend/src/api.ts
+- frontend/src/components/TopBar.tsx
+- frontend/src/styles.css
+- .env.example
+
+Feature 8 remains included as the feedback/event foundation.

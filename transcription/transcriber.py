@@ -2,10 +2,12 @@ import json
 import os
 import re
 import time
+import contextvars
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 from dotenv import load_dotenv
+from backend.app.analytics import record_gemini_response
 from google import genai
 
 
@@ -107,10 +109,15 @@ def generate_with_retry(
                 f"{attempt}/{MAX_RETRIES}..."
             )
 
-            return client.models.generate_content(
+            response = client.models.generate_content(
                 model=MODEL_NAME,
                 contents=contents,
             )
+            record_gemini_response(
+                response,
+                operation="transcription",
+            )
+            return response
 
         except Exception as error:
             last_error = error
@@ -420,13 +427,17 @@ def transcribe_call(
         max_workers=2,
         thread_name_prefix="tca-transcription",
     ) as executor:
+        current_context = contextvars.copy_context()
         my_future = executor.submit(
+            current_context.run,
             transcribe_audio,
             audio_path=mic_audio,
             speaker_label="I / LOCAL SPEAKER",
             status_callback=status_callback,
         )
+        their_context = contextvars.copy_context()
         their_future = executor.submit(
+            their_context.run,
             transcribe_audio,
             audio_path=system_audio,
             speaker_label=their_label,
