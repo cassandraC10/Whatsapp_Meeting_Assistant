@@ -1,0 +1,26 @@
+warning: in the working copy of '.env.example', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'backend/app/auth.py', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'backend/app/cloud_memory.py', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'backend/app/feedback.py', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'backend/app/main.py', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'backend/app/processing_service.py', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'backend/app/recorder_manager.py', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'backend/cloud_migrate.py', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'frontend/src/App.tsx', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'frontend/src/api.ts', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'requirements.txt', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'transcription/transcriber.py', LF will be replaced by CRLF the next time Git touches it
+ .env.example                      |  47 [32m+++[m[31m--[m
+ backend/app/auth.py               | 389 [32m++++++++++++++++++++++[m[31m----------------[m
+ backend/app/cloud_memory.py       |  12 [32m+[m[31m-[m
+ backend/app/feedback.py           |  28 [32m+++[m
+ backend/app/main.py               | 350 [32m+++++++++++++++++++++++++++++[m[31m-----[m
+ backend/app/processing_service.py |  17 [32m+[m[31m-[m
+ backend/app/recorder_manager.py   | 170 [32m+++++[m[31m------------[m
+ backend/cloud_migrate.py          |   5 [32m+[m[31m-[m
+ backend/data/tca_auth.db          | Bin [31m94208[m -> [32m106496[m bytes
+ frontend/src/App.tsx              | 269 [32m++++++++++++++[m[31m------------[m
+ frontend/src/api.ts               |  39 [32m++++[m
+ requirements.txt                  | Bin [31m1004[m -> [32m533[m bytes
+ transcription/transcriber.py      |  21 [32m+[m[31m-[m
+ 13 files changed, 862 insertions(+), 485 deletions(-)

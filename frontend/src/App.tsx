@@ -12,6 +12,7 @@ import {
   createCall,
   deleteCall,
   finishCallRecording,
+  uploadBrowserRecording,
   getCall,
   getCallNotes,
   getCalls,
@@ -45,6 +46,12 @@ import type {
 } from "./api";
 
 import { AnalyticsView } from "./components/AnalyticsView";
+import {
+  abortActiveBrowserCapture,
+  clearActiveBrowserCapture,
+  getActiveBrowserCapture,
+  startBrowserCapture,
+} from "./capture";
 import { AskTcaEntry } from "./components/AskTcaEntry";
 import { ConversationFeedback } from "./components/ConversationFeedback";
 import { CallRow } from "./components/CallRow";
@@ -64,6 +71,10 @@ type View =
 type Theme =
   | "light"
   | "dark";
+
+const CAPTURE_MODE =
+  import.meta.env.VITE_CAPTURE_MODE
+  || "local_server";
 
 
 function formatDuration(
@@ -639,6 +650,18 @@ function App() {
 
 
   useEffect(() => {
+    const handleBeforeUnload = () => {
+      abortActiveBrowserCapture();
+    };
+
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => {
+      window.removeEventListener("beforeunload", handleBeforeUnload);
+    };
+  }, []);
+
+
+  useEffect(() => {
     setFollowUpDraft("");
     setFollowUpRecipient(null);
     setFollowUpError("");
@@ -953,9 +976,11 @@ function App() {
           return;
         }
 
-        setElapsedSeconds(
-          result.elapsed_seconds
-        );
+        if (CAPTURE_MODE !== "browser") {
+          setElapsedSeconds(
+            result.elapsed_seconds
+          );
+        }
 
         setSelectedCall(
           (current) => {
@@ -1032,6 +1057,30 @@ function App() {
   }, [
     view,
     selectedCall?.id,
+  ]);
+
+
+  useEffect(() => {
+    if (
+      CAPTURE_MODE !== "browser"
+      || view !== "recording"
+      || !selectedCall
+      || selectedCall.status === "paused"
+    ) {
+      return;
+    }
+
+    const interval = window.setInterval(() => {
+      setElapsedSeconds((current) => current + 1);
+    }, 1000);
+
+    return () => {
+      window.clearInterval(interval);
+    };
+  }, [
+    view,
+    selectedCall?.id,
+    selectedCall?.status,
   ]);
 
 
@@ -1953,52 +2002,36 @@ function App() {
       return;
     }
 
-    setStartingRecording(
-      true
-    );
+    setStartingRecording(true);
+    setRecordingError("");
 
-    setRecordingError(
-      ""
-    );
+    let browserCapture = null;
 
     try {
+      if (CAPTURE_MODE === "browser") {
+        browserCapture = await startBrowserCapture();
+      }
+
       const updatedCall =
-        await startCallRecording(
-          selectedCall.id
-        );
+        await startCallRecording(selectedCall.id);
 
-      setSelectedCall(
-        updatedCall
-      );
-
-      updateCallInList(
-        updatedCall
-      );
-
-      setElapsedSeconds(
-        0
-      );
-
-      setView(
-        "recording"
-      );
-
+      setSelectedCall(updatedCall);
+      updateCallInList(updatedCall);
+      setElapsedSeconds(0);
+      setView("recording");
     } catch (error) {
+      browserCapture?.abort();
+      clearActiveBrowserCapture(browserCapture);
       setRecordingError(
         error instanceof Error
           ? error.message
-          : (
-            "Could not start "
-            + "recording."
-          )
+          : "Could not start recording."
       );
-
     } finally {
-      setStartingRecording(
-        false
-      );
+      setStartingRecording(false);
     }
   }
+
 
 
   async function togglePause() {
@@ -2010,53 +2043,46 @@ function App() {
       return;
     }
 
-    setChangingPauseState(
-      true
-    );
+    setChangingPauseState(true);
+    setRecordingError("");
 
-    setRecordingError(
-      ""
-    );
+    const isPausing = selectedCall.status !== "paused";
 
     try {
+      if (CAPTURE_MODE === "browser") {
+        if (isPausing) {
+          getActiveBrowserCapture()?.pause();
+        } else {
+          getActiveBrowserCapture()?.resume();
+        }
+      }
+
       const updatedCall =
-        selectedCall.status
-          === "paused"
-          ? (
-            await resumeCallRecording(
-              selectedCall.id
-            )
-          )
-          : (
-            await pauseCallRecording(
-              selectedCall.id
-            )
-          );
+        selectedCall.status === "paused"
+          ? await resumeCallRecording(selectedCall.id)
+          : await pauseCallRecording(selectedCall.id);
 
-      setSelectedCall(
-        updatedCall
-      );
-
-      updateCallInList(
-        updatedCall
-      );
-
+      setSelectedCall(updatedCall);
+      updateCallInList(updatedCall);
     } catch (error) {
+      if (CAPTURE_MODE === "browser") {
+        if (isPausing) {
+          getActiveBrowserCapture()?.resume();
+        } else {
+          getActiveBrowserCapture()?.pause();
+        }
+      }
+
       setRecordingError(
         error instanceof Error
           ? error.message
-          : (
-            "Could not change "
-            + "recording state."
-          )
+          : "Could not change recording state."
       );
-
     } finally {
-      setChangingPauseState(
-        false
-      );
+      setChangingPauseState(false);
     }
   }
+
 
 
   async function finishRecording() {
@@ -2067,74 +2093,73 @@ function App() {
       return;
     }
 
-    setFinishingRecording(
-      true
-    );
-
-    setRecordingError(
-      ""
-    );
+    setFinishingRecording(true);
+    setRecordingError("");
 
     try {
-      const result =
-        await finishCallRecording(
-          selectedCall.id
+      let result;
+
+      if (CAPTURE_MODE === "browser") {
+        const capture = getActiveBrowserCapture();
+        if (!capture) {
+          throw new Error("The browser capture session is no longer available. Please record the call again.");
+        }
+
+        let browserResult: Awaited<ReturnType<typeof capture.stop>>;
+        try {
+          browserResult = await capture.stop();
+        } catch (error) {
+          // The MediaRecorder session itself failed to stop. It is no longer
+          // safe to reuse, so release it and surface the real stop error
+          // rather than replacing it with a misleading "session unavailable"
+          // error on the next click.
+          capture.abort();
+          clearActiveBrowserCapture(capture);
+          throw error;
+        }
+
+        // Keep the completed browser capture session available until the
+        // upload succeeds. If the network/backend rejects the multipart
+        // upload, the user can retry without having to record the call again.
+        result = await uploadBrowserRecording(
+          selectedCall.id,
+          browserResult.mic,
+          browserResult.system,
+          browserResult.durationSeconds,
         );
 
-      setSelectedCall(
-        result.call
-      );
+        clearActiveBrowserCapture(capture);
+      } else {
+        result = await finishCallRecording(selectedCall.id);
+      }
 
-      updateCallInList(
-        result.call
-      );
+      setSelectedCall(result.call);
+      updateCallInList(result.call);
 
       setElapsedSeconds(
-        result
-          .recording
-          .duration_seconds
+        result.recording.duration_seconds
       );
 
-      setSelectedNotes(
-        null
-      );
+      setSelectedNotes(null);
+      setSelectedTranscript(null);
+      setProcessingError("");
+      setProcessingSeconds(0);
+      setView("processing");
 
-      setSelectedTranscript(
-        null
-      );
-
-      setProcessingError(
-        ""
-      );
-
-      setProcessingSeconds(
-        0
-      );
-
-      setView(
-        "processing"
-      );
-
-      await runProcessing(
-        result.call
-      );
-
+      await runProcessing(result.call);
     } catch (error) {
+      // Keep a completed browser capture available for upload retry. A
+      // stop failure is already released explicitly above.
       setRecordingError(
         error instanceof Error
           ? error.message
-          : (
-            "Could not finish "
-            + "recording."
-          )
+          : "Could not finish recording."
       );
-
     } finally {
-      setFinishingRecording(
-        false
-      );
+      setFinishingRecording(false);
     }
   }
+
 
 
   async function runProcessing(
@@ -3865,6 +3890,12 @@ function ConsentView({
               and the audio playing through
               your computer so it can
               prepare your notes afterwards.
+              {CAPTURE_MODE === "browser" && (
+                <>
+                  {" "}When prompted, share the tab,
+                  window, or screen with audio enabled.
+                </>
+              )}
             </p>
           </div>
 

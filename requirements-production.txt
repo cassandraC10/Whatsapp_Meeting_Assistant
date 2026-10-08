@@ -1,0 +1,8 @@
+fastapi>=0.116,<1
+uvicorn[standard]>=0.35,<1
+pydantic>=2.13,<3
+python-dotenv>=1.2,<2
+google-genai>=1.40,<2
+psycopg[binary]>=3.2,<4
+boto3>=1.40,<2
+python-multipart>=0.0.20,<1

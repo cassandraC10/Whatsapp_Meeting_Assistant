@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import sys
 
-from backend.app.auth import get_user
+from backend.app.auth import get_user, migrate_local_auth_users_to_cloud
 from backend.app.cloud import (
     initialize_cloud_foundation,
     load_cloud_config,
@@ -26,6 +26,9 @@ def main() -> int:
     if status.get("database") != "ok":
         print("Cloud PostgreSQL is not ready.")
         return 1
+
+    migrated_auth = migrate_local_auth_users_to_cloud()
+    print(f"Migrated {migrated_auth} local auth accounts into cloud auth.")
 
     # Mirror all existing local-auth users into the foundation table.
     # Importing sqlite here keeps the cloud module provider-neutral.

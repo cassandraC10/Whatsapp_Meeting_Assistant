@@ -1,0 +1,49 @@
+services:
+  - type: web
+    name: tca-api
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements-production.txt
+    startCommand: uvicorn backend.app.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health/ready
+    envVars:
+      - key: TCA_ENV
+        value: production
+      - key: TCA_CLOUD_ENABLED
+        value: "true"
+      - key: TCA_CLOUD_REQUIRED
+        value: "true"
+      - key: TCA_AUTH_SECRET
+        sync: false
+      - key: DATABASE_URL
+        sync: false
+      - key: TCA_FRONTEND_URLS
+        sync: false
+      - key: TCA_ALLOWED_HOSTS
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: GEMINI_MODEL
+        value: gemini-3.5-flash
+      - key: TCA_ANALYTICS_ADMIN_EMAILS
+        sync: false
+      - key: TCA_GEMINI_INPUT_COST_USD_PER_1M
+        sync: false
+      - key: TCA_GEMINI_OUTPUT_COST_USD_PER_1M
+        sync: false
+      - key: TCA_CAPTURE_MODE
+        value: browser
+      - key: TCA_MAX_BODY_MB
+        value: "25"
+      - key: S3_ENDPOINT_URL
+        sync: false
+      - key: S3_BUCKET
+        sync: false
+      - key: S3_ACCESS_KEY_ID
+        sync: false
+      - key: S3_SECRET_ACCESS_KEY
+        sync: false
+      - key: S3_REGION
+        value: auto
+      - key: S3_OBJECT_PREFIX
+        value: tca

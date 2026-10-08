@@ -1,9 +1,13 @@
 import json
 
-from fastapi import Depends, FastAPI, HTTPException, Query, status
+from fastapi import Depends, FastAPI, File, Form, HTTPException, Query, Request, UploadFile, status
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.middleware.gzip import GZipMiddleware
+from starlette.middleware.trustedhost import TrustedHostMiddleware
+from fastapi.responses import JSONResponse
 
 from backend.app.ask_service import AskTCAService
+from backend.app.config import get_config, is_analytics_admin, validate_startup
 from backend.app.auth import (
     authenticate_user,
     create_access_token,
@@ -64,18 +68,38 @@ app = FastAPI(
 )
 
 
+config = validate_startup()
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:5173",
-        "http://127.0.0.1:5173",
-        "http://localhost:4173",
-        "http://127.0.0.1:4173",
-    ],
+    allow_origins=list(config.frontend_origins),
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+allowed_hosts = [
+    item.strip()
+    for item in __import__("os").getenv("TCA_ALLOWED_HOSTS", "*").split(",")
+    if item.strip()
+]
+app.add_middleware(
+    TrustedHostMiddleware,
+    allowed_hosts=allowed_hosts or ["*"],
+)
+app.add_middleware(GZipMiddleware, minimum_size=1000)
+
+
+@app.middleware("http")
+async def security_headers(request, call_next):
+    response = await call_next(request)
+    response.headers.setdefault("X-Content-Type-Options", "nosniff")
+    response.headers.setdefault("X-Frame-Options", "DENY")
+    response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
+    if config.production:
+        response.headers.setdefault("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
+    return response
+
 
 
 call_repository = (
@@ -99,9 +123,79 @@ ask_service = (
 )
 
 
+AUDIO_UPLOAD_CONTENT_TYPES = {
+    "audio/webm",
+    "video/webm",
+    "audio/ogg",
+    "application/ogg",
+    "audio/mp4",
+    "audio/mpeg",
+}
+AUDIO_UPLOAD_EXTENSIONS = {
+    "audio/webm": ".webm",
+    "video/webm": ".webm",
+    "audio/ogg": ".ogg",
+    "application/ogg": ".ogg",
+    "audio/mp4": ".mp4",
+    "audio/mpeg": ".mp3",
+}
+
+
+def _validate_audio_upload(upload: UploadFile, field_name: str) -> str:
+    # Browser MediaRecorder commonly reports codec parameters, e.g.
+    # ``audio/webm;codecs=opus``. FastAPI exposes that exact value as
+    # UploadFile.content_type, so exact matching would reject perfectly valid
+    # browser recordings with HTTP 415. Normalize parameters before validating.
+    raw_content_type = (upload.content_type or "").strip().casefold()
+    content_type = raw_content_type.split(";", 1)[0].strip()
+    if content_type not in AUDIO_UPLOAD_CONTENT_TYPES:
+        raise HTTPException(
+            status_code=415,
+            detail=(
+                f"{field_name} must be WebM/Opus or Ogg/Opus audio. "
+                f"Received {raw_content_type or 'unknown content type'}."
+            ),
+        )
+    return AUDIO_UPLOAD_EXTENSIONS[content_type]
+
+
+async def _save_audio_upload(
+    upload: UploadFile,
+    destination,
+    max_bytes: int,
+) -> int:
+    total = 0
+    try:
+        with destination.open("wb") as handle:
+            while True:
+                chunk = await upload.read(1024 * 1024)
+                if not chunk:
+                    break
+                total += len(chunk)
+                if total > max_bytes:
+                    raise HTTPException(
+                        status_code=413,
+                        detail="Audio upload is larger than the configured capture limit.",
+                    )
+                handle.write(chunk)
+    finally:
+        await upload.close()
+
+    if total == 0:
+        raise HTTPException(
+            status_code=400,
+            detail="Audio upload is empty.",
+        )
+
+    return total
+
+
 def recover_stale_call(
     call: Call,
 ) -> Call:
+    if config.capture_mode == "browser":
+        return call
+
     if call.status not in {
         CallStatus.RECORDING,
         CallStatus.PAUSED,
@@ -140,12 +234,12 @@ def recover_stale_calls() -> None:
         )
 
 
-recover_stale_calls()
+cloud_startup_status = initialize_cloud_foundation()
 initialize_auth_database()
 initialize_event_store()
 initialize_feedback_store()
 initialize_analytics_store()
-cloud_startup_status = initialize_cloud_foundation()
+recover_stale_calls()
 
 
 @app.get("/health")
@@ -154,8 +248,36 @@ def health_check():
         "status": "ok",
         "service": "TCA API",
         "version": "0.5.0",
+        "environment": config.environment,
         "cloud": cloud_startup_status,
+        "capture_mode": config.capture_mode,
     }
+
+
+@app.get("/health/ready")
+def readiness_check():
+    cloud_status = cloud_health()
+    checks = {
+        "config": "ok",
+        "cloud_database": "ok" if (not config.cloud_required or cloud_status.get("database", {}).get("status") == "ok") else "error",
+        "gemini": "ok" if config.gemini_api_key else "missing",
+    }
+    ready = all(value == "ok" for value in checks.values())
+    payload = {
+        "status": "ready" if ready else "not_ready",
+        "environment": config.environment,
+        "checks": checks,
+        "capture": {
+            "mode": config.capture_mode,
+            "server_audio_available": config.capture_mode == "local_server",
+            "note": (
+                "Local Windows audio capture is available only where the local audio devices exist."
+                if config.capture_mode == "local_server"
+                else "Browser capture endpoint is configured; use the browser capture client."
+            ),
+        },
+    }
+    return JSONResponse(status_code=200 if ready else 503, content=payload)
 
 
 @app.get("/health/cloud")
@@ -791,21 +913,20 @@ def start_call_recording(
         )
     )
 
-    mic_file = (
-        call_directory
-        / "mic_raw.wav"
-    )
-
-    system_file = (
-        call_directory
-        / "system_raw.wav"
+    mic_file = call_directory / "mic_raw.wav"
+    system_file = call_directory / "system_raw.wav"
+    has_saved_capture = (
+        mic_file.exists()
+        and system_file.exists()
+    ) or (
+        any(call_directory.glob("mic_raw.*"))
+        and any(call_directory.glob("system_raw.*"))
     )
 
     if (
         call.status
         == CallStatus.FAILED
-        and mic_file.exists()
-        and system_file.exists()
+        and has_saved_capture
     ):
         raise HTTPException(
             status_code=409,
@@ -828,6 +949,26 @@ def start_call_recording(
             detail=(
                 "An active recorder already "
                 "exists for this call."
+            ),
+        )
+
+    if config.capture_mode == "browser":
+        call.status = CallStatus.RECORDING
+        call.failure_reason = None
+        call_repository.save(call)
+        record_product_event(
+            user_id=user.id,
+            event_name="recording_started",
+            call_id=call.id,
+            properties={"title": call.title, "capture_mode": "browser"},
+        )
+        return call
+
+    if config.capture_mode != "local_server":
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "This deployment does not have a supported capture mode."
             ),
         )
 
@@ -903,6 +1044,11 @@ def pause_call_recording(
                 "can be paused."
             ),
         )
+
+    if config.capture_mode == "browser":
+        call.status = CallStatus.PAUSED
+        call_repository.save(call)
+        return call
 
     if not (
         recorder_manager
@@ -980,6 +1126,11 @@ def resume_call_recording(
             ),
         )
 
+    if config.capture_mode == "browser":
+        call.status = CallStatus.RECORDING
+        call_repository.save(call)
+        return call
+
     if not (
         recorder_manager
         .is_recording(
@@ -1029,6 +1180,120 @@ def resume_call_recording(
     )
 
     return call
+
+
+@app.post(
+    "/calls/{call_id}/capture",
+)
+async def upload_browser_capture(
+    call_id: str,
+    request: Request,
+    mic_audio: UploadFile = File(...),
+    system_audio: UploadFile = File(...),
+    duration_seconds: float = Form(...),
+    user=Depends(get_current_user),
+):
+    call = require_call(call_id, user)
+
+    if config.capture_mode != "browser":
+        raise HTTPException(
+            status_code=409,
+            detail="Browser capture uploads are disabled for this deployment.",
+        )
+
+    if call.status not in {CallStatus.RECORDING, CallStatus.PAUSED}:
+        raise HTTPException(
+            status_code=409,
+            detail="This call is not in an active recording state.",
+        )
+
+    if duration_seconds <= 0 or duration_seconds > 24 * 60 * 60:
+        raise HTTPException(
+            status_code=400,
+            detail="Recording duration is invalid.",
+        )
+
+    max_bytes = config.max_body_mb * 1024 * 1024
+    content_length = request.headers.get("content-length")
+    if content_length:
+        try:
+            if int(content_length) > max_bytes:
+                raise HTTPException(
+                    status_code=413,
+                    detail=(
+                        f"The complete capture upload is larger than "
+                        f"the configured {config.max_body_mb} MB limit."
+                    ),
+                )
+        except ValueError:
+            pass
+
+    mic_extension = _validate_audio_upload(mic_audio, "Microphone audio")
+    system_extension = _validate_audio_upload(system_audio, "System audio")
+
+    call_directory = call_repository.get_directory(call_id)
+    mic_destination = call_directory / f"mic_raw{mic_extension}"
+    system_destination = call_directory / f"system_raw{system_extension}"
+
+    # A call may be retried after a failed upload; replace only the two capture
+    # inputs and leave the rest of the call memory untouched.
+    for path in call_directory.glob("mic_raw.*"):
+        if path != mic_destination:
+            path.unlink(missing_ok=True)
+    for path in call_directory.glob("system_raw.*"):
+        if path != system_destination:
+            path.unlink(missing_ok=True)
+
+    try:
+        mic_bytes = await _save_audio_upload(
+            mic_audio,
+            mic_destination,
+            max_bytes,
+        )
+        system_bytes = await _save_audio_upload(
+            system_audio,
+            system_destination,
+            max_bytes,
+        )
+    except HTTPException:
+        mic_destination.unlink(missing_ok=True)
+        system_destination.unlink(missing_ok=True)
+        raise
+    except Exception as error:
+        mic_destination.unlink(missing_ok=True)
+        system_destination.unlink(missing_ok=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Could not save the browser recording: {error}",
+        ) from error
+
+    call.duration_seconds = float(duration_seconds)
+    call.status = CallStatus.PROCESSING
+    call.failure_reason = None
+    call_repository.save(call)
+
+    record_product_event(
+        user_id=user.id,
+        event_name="recording_finished",
+        call_id=call.id,
+        properties={
+            "duration_seconds": call.duration_seconds,
+            "capture_mode": "browser",
+            "mic_bytes": mic_bytes,
+            "system_bytes": system_bytes,
+        },
+    )
+
+    return {
+        "call": call,
+        "recording": {
+            "mic": str(mic_destination),
+            "system": str(system_destination),
+            "duration_seconds": call.duration_seconds,
+            "mic_bytes": mic_bytes,
+            "system_bytes": system_bytes,
+        },
+    }
 
 
 @app.post(
@@ -1175,22 +1440,19 @@ def get_recording_status(
         "call_id": call.id,
         "status": call.status,
         "is_recording": (
-            recorder_manager
-            .is_recording(
-                call_id
-            )
+            call.status == CallStatus.RECORDING
+            if config.capture_mode == "browser"
+            else recorder_manager.is_recording(call_id)
         ),
         "is_paused": (
-            recorder_manager
-            .is_paused(
-                call_id
-            )
+            call.status == CallStatus.PAUSED
+            if config.capture_mode == "browser"
+            else recorder_manager.is_paused(call_id)
         ),
         "elapsed_seconds": (
-            recorder_manager
-            .elapsed_seconds(
-                call_id
-            )
+            call.duration_seconds
+            if config.capture_mode == "browser"
+            else recorder_manager.elapsed_seconds(call_id)
         ),
         "failure_reason": (
             call.failure_reason
@@ -1229,20 +1491,16 @@ def process_call(
             ),
         )
 
-    mic_file = (
-        call_directory
-        / "mic_raw.wav"
+    mic_file = next(
+        (path for path in call_directory.glob("mic_raw.*") if path.is_file()),
+        None,
+    )
+    system_file = next(
+        (path for path in call_directory.glob("system_raw.*") if path.is_file()),
+        None,
     )
 
-    system_file = (
-        call_directory
-        / "system_raw.wav"
-    )
-
-    if (
-        not mic_file.exists()
-        or not system_file.exists()
-    ):
+    if mic_file is None or system_file is None:
         raise HTTPException(
             status_code=409,
             detail=(
@@ -1496,13 +1754,7 @@ def get_admin_analytics(
     days: int = Query(default=30, ge=1, le=365),
     user=Depends(get_current_user),
 ):
-    configured_admin = (
-        __import__("os").getenv("TCA_ANALYTICS_ADMIN_EMAIL", "")
-        .strip()
-        .casefold()
-    )
-
-    if not configured_admin or user.email.casefold() != configured_admin:
+    if not is_analytics_admin(user.email):
         raise HTTPException(
             status_code=403,
             detail="Analytics admin access is not enabled for this account.",

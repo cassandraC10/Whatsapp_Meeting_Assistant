@@ -79,6 +79,18 @@ def is_temporary_gemini_error(
     )
 
 
+def find_audio_file(
+    call_directory: str | Path,
+    stem: str,
+) -> Path | None:
+    directory = Path(call_directory)
+    for suffix in (".wav", ".webm", ".ogg", ".mp4", ".m4a", ".mp3"):
+        candidate = directory / f"{stem}{suffix}"
+        if candidate.exists() and candidate.is_file() and candidate.stat().st_size > 0:
+            return candidate
+    return None
+
+
 def validate_audio_file(
     audio_path: Path,
 ) -> None:
@@ -389,8 +401,13 @@ def transcribe_call(
         call_directory
     )
 
-    mic_audio = call_directory / "mic_raw.wav"
-    system_audio = call_directory / "system_raw.wav"
+    mic_audio = find_audio_file(call_directory, "mic_raw")
+    system_audio = find_audio_file(call_directory, "system_raw")
+
+    if mic_audio is None:
+        raise FileNotFoundError("Microphone recording is missing.")
+    if system_audio is None:
+        raise FileNotFoundError("System recording is missing.")
 
     my_transcript_file = (
         call_directory / "my_transcript.txt"

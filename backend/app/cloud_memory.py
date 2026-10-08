@@ -27,6 +27,16 @@ MEMORY_FILES = (
     "meeting.wav",
     "mic_raw.wav",
     "system_raw.wav",
+    "mic_raw.webm",
+    "system_raw.webm",
+    "mic_raw.ogg",
+    "system_raw.ogg",
+    "mic_raw.mp4",
+    "system_raw.mp4",
+    "mic_raw.m4a",
+    "system_raw.m4a",
+    "mic_raw.mp3",
+    "system_raw.mp3",
 )
 
 MEMORY_TEXT_FILES = {
@@ -381,7 +391,7 @@ def hydrate_call_from_cloud(
 
     for row in objects:
         relative_path = row["relative_path"]
-        if not include_audio and relative_path.endswith(".wav"):
+        if not include_audio and relative_path.rsplit(".", 1)[-1].casefold() in {"wav", "webm", "ogg", "mp4", "m4a", "mp3"}:
             continue
         target = directory / relative_path
         if target.exists():

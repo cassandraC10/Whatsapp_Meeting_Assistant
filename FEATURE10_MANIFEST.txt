@@ -1,0 +1,27 @@
+TCA V0.5 — Feature 10 Production Configuration
+
+Added:
+- backend/app/config.py
+- backend/migrations/005_production_auth.sql
+- requirements-production.txt
+- .env.production.example
+- frontend/.env.production.example
+- render.yaml
+- netlify.toml
+- README_FEATURE10.md
+
+Updated:
+- backend/app/main.py
+- backend/app/auth.py
+- backend/app/feedback.py
+- backend/app/recorder_manager.py
+- backend/cloud_migrate.py
+- requirements.txt
+
+Production persistence:
+- Cloud PostgreSQL becomes authoritative for authentication when cloud mode is enabled.
+- Conversation memory already uses cloud memory when cloud mode is enabled.
+- Feedback and analytics remain cloud-backed through existing Feature 8/9 tables.
+
+Explicit limitation:
+- Current recording is Windows/local-device based. Render cannot access a user's microphone/system audio. Hosted capture still requires a browser/native audio upload implementation.

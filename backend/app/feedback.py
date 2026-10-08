@@ -84,6 +84,34 @@ def get_feedback(
     user_id: str,
     call_id: str,
 ) -> FeedbackResponse | None:
+    if _cloud_database_ready():
+        try:
+            with cloud_database_connection() as connection:
+                with connection.cursor() as cursor:
+                    cursor.execute(
+                        """
+                        SELECT id, call_id, rating, comment, created_at, updated_at
+                        FROM tca_feedback
+                        WHERE user_id = %s AND call_id = %s
+                        """,
+                        (user_id, call_id),
+                    )
+                    row = cursor.fetchone()
+            if row is None:
+                return None
+            data = {
+                "id": row["id"],
+                "call_id": row["call_id"],
+                "rating": row["rating"],
+                "comment": row["comment"],
+                "created_at": row["created_at"],
+                "updated_at": row["updated_at"],
+            }
+            return FeedbackResponse.model_validate(data)
+        except Exception:
+            if load_cloud_config().required:
+                raise
+
     initialize_feedback_store()
 
     with _connect() as connection:

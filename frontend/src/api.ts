@@ -521,6 +521,45 @@ export function deleteCall(
 }
 
 
+export interface BrowserCaptureUploadResponse {
+  call: Call;
+  recording: {
+    mic: string;
+    system: string;
+    duration_seconds: number;
+    mic_bytes: number;
+    system_bytes: number;
+  };
+}
+
+export async function uploadBrowserRecording(
+  callId: string,
+  mic: Blob,
+  system: Blob,
+  durationSeconds: number,
+): Promise<BrowserCaptureUploadResponse> {
+  const form = new FormData();
+  const extension = (blob: Blob): string => {
+    const normalized = blob.type.toLowerCase().split(";", 1)[0].trim();
+    if (normalized === "audio/ogg" || normalized === "application/ogg") return "ogg";
+    if (normalized === "audio/mp4") return "mp4";
+    if (normalized === "audio/mpeg") return "mp3";
+    return "webm";
+  };
+
+  form.append("mic_audio", mic, `mic.${extension(mic)}`);
+  form.append("system_audio", system, `system.${extension(system)}`);
+  form.append("duration_seconds", String(durationSeconds));
+
+  return request<BrowserCaptureUploadResponse>(
+    `/calls/${callId}/capture`,
+    {
+      method: "POST",
+      body: form,
+    },
+  );
+}
+
 export function startCallRecording(
   callId: string
 ): Promise<Call> {

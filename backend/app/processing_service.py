@@ -6,10 +6,12 @@ from backend.app.models import (
 from backend.app.repository import (
     CallRepository,
 )
+from transcription.transcriber import find_audio_file
 from intelligence.summarizer import (
     summarize_call,
 )
 from transcription.transcriber import (
+    find_audio_file,
     infer_remote_participant_name,
     transcribe_call,
 )
@@ -34,22 +36,15 @@ class CallProcessingService:
             )
         )
 
-        mic_file = (
-            call_directory
-            / "mic_raw.wav"
-        )
+        mic_file = find_audio_file(call_directory, "mic_raw")
+        system_file = find_audio_file(call_directory, "system_raw")
 
-        system_file = (
-            call_directory
-            / "system_raw.wav"
-        )
-
-        if not mic_file.exists():
+        if mic_file is None:
             raise RuntimeError(
                 "Microphone recording is missing."
             )
 
-        if not system_file.exists():
+        if system_file is None:
             raise RuntimeError(
                 "System recording is missing."
             )
