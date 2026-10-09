@@ -97,9 +97,13 @@ def _database_connection():
         )
 
     psycopg = _require_psycopg()
+
+    from psycopg.rows import dict_row
+
     return psycopg.connect(
         config.database_url,
         connect_timeout=8,
+        row_factory=dict_row,
     )
 
 
