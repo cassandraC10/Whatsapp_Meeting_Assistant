@@ -346,13 +346,12 @@ async function request<T>(
     headers.set("Authorization", `Bearer ${token}`);
   }
 
-  const response = await fetch(
-    `${API_BASE_URL}${path}`,
-    {
-      ...options,
-      headers,
-    }
-  );
+  let response: Response;
+  try {
+    response = await fetch(`${API_BASE_URL}${path}`, { ...options, headers });
+  } catch {
+    throw new Error("We couldn't reach Clipian. Check your connection and try again.");
+  }
 
   if (response.status === 401 && !path.startsWith("/auth/")) {
     clearAuthToken();
@@ -367,9 +366,17 @@ async function request<T>(
       const data =
         await response.json();
 
-      if (data.detail) {
-        message =
-          data.detail;
+      if (typeof data.detail === "string") {
+        const detail = data.detail;
+        if (/FAILED_PRECONDITION|Traceback|TypeError:|RuntimeError:|Gemini|google\.genai|psycopg|botocore|S3|Internal Server Error|\b5\d\d\b/i.test(detail)) {
+          message = /quota|rate limit|resource exhausted|429/i.test(detail)
+            ? "The AI service is busy or its usage limit was reached. Your recording is safe; please try again later."
+            : /not in an ACTIVE state|file.*active/i.test(detail)
+              ? "Your audio is still being prepared. Please wait a moment and try processing again."
+              : "We couldn't finish that request. Your saved recording is safe; please try again.";
+        } else {
+          message = detail;
+        }
       }
 
     } catch {
@@ -525,7 +532,7 @@ export interface BrowserCaptureUploadResponse {
   call: Call;
   recording: {
     mic: string;
-    system: string;
+    system: string | null;
     duration_seconds: number;
     mic_bytes: number;
     system_bytes: number;
@@ -535,7 +542,7 @@ export interface BrowserCaptureUploadResponse {
 export async function uploadBrowserRecording(
   callId: string,
   mic: Blob,
-  system: Blob,
+  system: Blob | null,
   durationSeconds: number,
 ): Promise<BrowserCaptureUploadResponse> {
   const form = new FormData();
@@ -548,7 +555,9 @@ export async function uploadBrowserRecording(
   };
 
   form.append("mic_audio", mic, `mic.${extension(mic)}`);
-  form.append("system_audio", system, `system.${extension(system)}`);
+  if (system && system.size > 0) {
+    form.append("system_audio", system, `system.${extension(system)}`);
+  }
   form.append("duration_seconds", String(durationSeconds));
 
   return request<BrowserCaptureUploadResponse>(

@@ -406,8 +406,6 @@ def transcribe_call(
 
     if mic_audio is None:
         raise FileNotFoundError("Microphone recording is missing.")
-    if system_audio is None:
-        raise FileNotFoundError("System recording is missing.")
 
     my_transcript_file = (
         call_directory / "my_transcript.txt"
@@ -432,37 +430,27 @@ def transcribe_call(
         else "THEM"
     )
 
-    # Mic and system recordings are independent. Run exactly two
-    # transcription requests concurrently; never transcribe either
-    # side a second time.
-    if status_callback:
-        status_callback(
-            "Transcribing both sides of the call..."
-        )
-
-    with ThreadPoolExecutor(
-        max_workers=2,
-        thread_name_prefix="tca-transcription",
-    ) as executor:
-        current_context = contextvars.copy_context()
-        my_future = executor.submit(
-            current_context.run,
-            transcribe_audio,
+    # Desktop recordings have separate mic/system tracks. Mobile microphone-only
+    # captures deliberately transcribe a single track without inventing a second speaker.
+    if system_audio is None:
+        if status_callback:
+            status_callback("Transcribing microphone audio...")
+        my_transcript = transcribe_audio(
             audio_path=mic_audio,
-            speaker_label="I / LOCAL SPEAKER",
+            speaker_label="LOCAL / MICROPHONE",
             status_callback=status_callback,
         )
-        their_context = contextvars.copy_context()
-        their_future = executor.submit(
-            their_context.run,
-            transcribe_audio,
-            audio_path=system_audio,
-            speaker_label=their_label,
-            status_callback=status_callback,
-        )
-
-        my_transcript = my_future.result()
-        their_transcript = their_future.result()
+        their_transcript = ""
+    else:
+        if status_callback:
+            status_callback("Transcribing both sides of the call...")
+        with ThreadPoolExecutor(max_workers=2, thread_name_prefix="tca-transcription") as executor:
+            current_context = contextvars.copy_context()
+            my_future = executor.submit(current_context.run, transcribe_audio, audio_path=mic_audio, speaker_label="I / LOCAL SPEAKER", status_callback=status_callback)
+            their_context = contextvars.copy_context()
+            their_future = executor.submit(their_context.run, transcribe_audio, audio_path=system_audio, speaker_label=their_label, status_callback=status_callback)
+            my_transcript = my_future.result()
+            their_transcript = their_future.result()
 
     my_transcript_file.write_text(
         my_transcript,

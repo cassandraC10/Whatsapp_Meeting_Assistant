@@ -3,6 +3,11 @@
 import tempfile
 from pathlib import Path
 
+import sys
+
+REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(REPOSITORY_ROOT))
+
 from backend.app import auth as auth_module
 from backend.app import repository as repository_module
 
@@ -16,7 +21,7 @@ def main() -> None:
         user = auth_module.create_user(
             "Cassie Oliver",
             "CASSIE@example.com",
-            "password123",
+            "TestPassphrase123!",
         )
         assert user.onboarding_completed is False
 

@@ -1,48 +1,25 @@
 from __future__ import annotations
 
-
-
 import base64
-
 import hashlib
-
 import hmac
-
 import json
-
 import os
-
 import re
-
 import secrets
-
 import sqlite3
-
 import time
-
+from contextlib import contextmanager
 from dataclasses import dataclass
-
 from datetime import datetime, timezone
-
 from pathlib import Path
-
 from uuid import uuid4
 
-
-
 from fastapi import Depends, HTTPException, status
-
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
-
-
 from backend.app.cloud import cloud_database_connection, load_cloud_config
-
 from backend.app.config import get_config
-
-
-
-
 
 BACKEND_ROOT = Path(__file__).resolve().parent.parent
 
@@ -142,11 +119,28 @@ def _connect() -> sqlite3.Connection:
 
 
 
+@contextmanager
+def _auth_connection():
+
+    connection = _connect()
+
+    try:
+
+        with connection:
+
+            yield connection
+
+    finally:
+
+        connection.close()
+
+
+
 
 
 def initialize_auth_database() -> None:
 
-    with _connect() as connection:
+    with _auth_connection() as connection:
 
         connection.execute(
 
@@ -254,9 +248,9 @@ def validate_signup(name: str, email: str, password: str) -> tuple[str, str, str
 
         raise ValueError("Email address is too long.")
 
-    if len(password) < 8:
+    if len(password) < 12:
 
-        raise ValueError("Password must be at least 8 characters.")
+        raise ValueError("Password must be at least 12 characters.")
 
     if len(password) > 200:
 
@@ -463,7 +457,7 @@ def create_user(name: str, email: str, password: str) -> AuthUser:
 
     try:
 
-        with _connect() as connection:
+        with _auth_connection() as connection:
 
             connection.execute(
 
@@ -561,7 +555,7 @@ def authenticate_user(email: str, password: str) -> AuthUser | None:
 
     initialize_auth_database()
 
-    with _connect() as connection:
+    with _auth_connection() as connection:
 
         row = connection.execute(
 
@@ -619,7 +613,7 @@ def get_user(user_id: str) -> AuthUser | None:
 
     initialize_auth_database()
 
-    with _connect() as connection:
+    with _auth_connection() as connection:
 
         row = connection.execute(
 
@@ -683,7 +677,7 @@ def update_user_profile(user_id: str, name: str, onboarding_completed: bool) -> 
 
         initialize_auth_database()
 
-        with _connect() as connection:
+        with _auth_connection() as connection:
 
             connection.execute(
 
@@ -785,7 +779,7 @@ def create_capture_handoff(user: AuthUser) -> tuple[str, int]:
 
     initialize_auth_database()
 
-    with _connect() as connection:
+    with _auth_connection() as connection:
 
         connection.execute(
 
@@ -853,7 +847,7 @@ def exchange_capture_handoff(code: str) -> AuthUser | None:
 
     initialize_auth_database()
 
-    with _connect() as connection:
+    with _auth_connection() as connection:
 
         connection.execute("BEGIN IMMEDIATE")
 
@@ -893,7 +887,7 @@ def migrate_local_auth_users_to_cloud() -> int:
 
     initialize_auth_database()
 
-    with _connect() as local_connection:
+    with _auth_connection() as local_connection:
 
         rows = local_connection.execute(
 

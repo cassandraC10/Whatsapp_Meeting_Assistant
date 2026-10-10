@@ -7,8 +7,9 @@ export interface BrowserCaptureSession {
 
 export interface BrowserCaptureResult {
   mic: Blob;
-  system: Blob;
+  system: Blob | null;
   durationSeconds: number;
+  mode: "microphone" | "microphone-and-system";
 }
 
 // The capture session intentionally lives outside the React component tree.
@@ -131,10 +132,6 @@ export async function startBrowserCapture(): Promise<BrowserCaptureSession> {
     throw new Error("This browser does not support microphone capture.");
   }
 
-  if (!navigator.mediaDevices.getDisplayMedia) {
-    throw new Error("This browser does not support system-audio capture. Use a current desktop Chrome or Edge browser.");
-  }
-
   if (typeof MediaRecorder === "undefined") {
     throw new Error("This browser does not support audio recording.");
   }
@@ -146,43 +143,49 @@ export async function startBrowserCapture(): Promise<BrowserCaptureSession> {
 
   let micStream: MediaStream | null = null;
   let displayStream: MediaStream | null = null;
+  let systemStream: MediaStream | null = null;
+  // Mobile browsers commonly do not support sharing tab/system audio. Use an
+  // explicit microphone-only path there; desktop keeps dual-track capture.
+  const mobileBrowser = /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent);
+  const useSystemAudio = !mobileBrowser && Boolean(navigator.mediaDevices.getDisplayMedia);
 
   try {
-    const [mic, display] = await Promise.all([
-      navigator.mediaDevices.getUserMedia({
-        audio: {
-          echoCancellation: true,
-          noiseSuppression: true,
-          autoGainControl: true,
-        },
-        video: false,
-      }),
-      navigator.mediaDevices.getDisplayMedia({
-        video: true,
-        audio: true,
-      }),
-    ]);
-
+    const mic = await navigator.mediaDevices.getUserMedia({
+      audio: {
+        echoCancellation: true,
+        noiseSuppression: true,
+        autoGainControl: true,
+      },
+      video: false,
+    });
     micStream = mic;
-    displayStream = display;
 
-    const displayAudioTracks = display.getAudioTracks();
-    if (displayAudioTracks.length === 0) {
-      stopTracks(micStream);
-      stopTracks(displayStream);
-      throw new Error("No system audio was shared. In the share dialog, choose a tab/window/screen with audio enabled and try again.");
+    if (useSystemAudio) {
+      try {
+        displayStream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true });
+      } catch (error) {
+        stopTracks(micStream);
+        micStream = null;
+        throw error;
+      }
+      const displayAudioTracks = displayStream.getAudioTracks();
+      if (displayAudioTracks.length === 0) {
+        stopTracks(micStream);
+        stopTracks(displayStream);
+        throw new Error("No shared audio was selected. Choose a tab with audio enabled, or use microphone-only capture.");
+      }
+      systemStream = new MediaStream(displayAudioTracks);
     }
 
-    const systemStream = new MediaStream(displayAudioTracks);
     const micRecording = createRecorder(micStream, mimeType);
-    const systemRecording = createRecorder(systemStream, mimeType);
+    const systemRecording = systemStream ? createRecorder(systemStream, mimeType) : null;
 
     const startedAt = performance.now();
     let stopped = false;
     let stopPromise: Promise<BrowserCaptureResult> | null = null;
 
     micRecording.recorder.start(1000);
-    systemRecording.recorder.start(1000);
+    systemRecording?.recorder.start(1000);
 
     const cleanup = () => {
       stopTracks(micStream);
@@ -196,13 +199,13 @@ export async function startBrowserCapture(): Promise<BrowserCaptureSession> {
       pause() {
         if (stopped) return;
         if (micRecording.recorder.state === "recording") micRecording.recorder.pause();
-        if (systemRecording.recorder.state === "recording") systemRecording.recorder.pause();
+        if (systemRecording?.recorder.state === "recording") systemRecording.recorder.pause();
       },
 
       resume() {
         if (stopped) return;
         if (micRecording.recorder.state === "paused") micRecording.recorder.resume();
-        if (systemRecording.recorder.state === "paused") systemRecording.recorder.resume();
+        if (systemRecording?.recorder.state === "paused") systemRecording.recorder.resume();
       },
 
       stop() {
@@ -216,15 +219,17 @@ export async function startBrowserCapture(): Promise<BrowserCaptureSession> {
 
           await Promise.all([
             waitForStop(micRecording.recorder),
-            waitForStop(systemRecording.recorder),
+            ...(systemRecording ? [waitForStop(systemRecording.recorder)] : []),
           ]);
 
           cleanup();
 
           const micBlob = new Blob(micRecording.chunks, { type: micRecording.recorder.mimeType || mimeType });
-          const systemBlob = new Blob(systemRecording.chunks, { type: systemRecording.recorder.mimeType || mimeType });
+          const systemBlob = systemRecording
+            ? new Blob(systemRecording.chunks, { type: systemRecording.recorder.mimeType || mimeType })
+            : null;
 
-          if (micBlob.size === 0 || systemBlob.size === 0) {
+          if (micBlob.size === 0 || (systemBlob && systemBlob.size === 0)) {
             throw new Error("The browser did not produce usable audio. Please try the capture again.");
           }
 
@@ -232,6 +237,7 @@ export async function startBrowserCapture(): Promise<BrowserCaptureSession> {
             mic: micBlob,
             system: systemBlob,
             durationSeconds,
+            mode: systemBlob ? "microphone-and-system" : "microphone",
           };
         })();
 
@@ -247,7 +253,7 @@ export async function startBrowserCapture(): Promise<BrowserCaptureSession> {
           // Best-effort cleanup.
         }
         try {
-          if (systemRecording.recorder.state !== "inactive") systemRecording.recorder.stop();
+          if (systemRecording && systemRecording.recorder.state !== "inactive") systemRecording.recorder.stop();
         } catch {
           // Best-effort cleanup.
         }

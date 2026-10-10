@@ -1,6 +1,6 @@
 {
-  "name": "Conversation Assistant",
-  "short_name": "Assistant",
+  "name": "TCA \u2014 Conversation Assistant",
+  "short_name": "TCA",
   "description": "Capture conversations and turn them into useful memory.",
   "start_url": "/?capture=1",
   "scope": "/",

@@ -6,14 +6,17 @@
   "scripts": {
     "start": "electron .",
     "dist": "electron-builder --win nsis",
-    "dist:portable": "electron-builder --win portable"
+    "dist:portable": "electron-builder --win portable",
+    "dist:win": "electron-builder --win nsis portable",
+    "dist:mac": "electron-builder --mac dmg",
+    "dist:linux": "electron-builder --linux AppImage"
   },
   "devDependencies": {
     "electron": "44.3.0",
     "electron-builder": "^26.0.12"
   },
   "build": {
-    "appId": "com.tca.floatingcapture",
+    "appId": "com.tca.capture",
     "productName": "TCA Capture",
     "files": [
       "src/**/*",
@@ -22,11 +25,16 @@
     "protocols": [
       {
         "name": "TCA Capture",
-        "schemes": ["tca-capture"]
+        "schemes": [
+          "tca-capture"
+        ]
       }
     ],
     "win": {
-      "target": ["nsis", "portable"],
+      "target": [
+        "nsis",
+        "portable"
+      ],
       "icon": "src/icon-512.png"
     }
   }

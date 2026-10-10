@@ -44,11 +44,6 @@ class CallProcessingService:
                 "Microphone recording is missing."
             )
 
-        if system_file is None:
-            raise RuntimeError(
-                "System recording is missing."
-            )
-
         call.status = (
             CallStatus.PROCESSING
         )

@@ -3886,15 +3886,11 @@ function ConsentView({
             </h2>
 
             <p>
-              TCA records your microphone
-              and the audio playing through
-              your computer so it can
-              prepare your notes afterwards.
-              {CAPTURE_MODE === "browser" && (
-                <>
-                  {" "}When prompted, share the tab,
-                  window, or screen with audio enabled.
-                </>
+              {typeof navigator !== "undefined" && /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent)
+                ? "Clipian will record microphone audio on this phone. Keep the phone near the conversation; audio from other apps or remote-call audio may not be captured."
+                : "Clipian records your microphone and, when supported, the audio playing through your computer so it can prepare your notes afterwards."}
+              {CAPTURE_MODE === "browser" && !(typeof navigator !== "undefined" && /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent)) && (
+                <> {" "}When prompted, share a tab or screen with audio enabled. If system audio isn't available, you can still use microphone-only capture on a supported device.</>
               )}
             </p>
           </div>

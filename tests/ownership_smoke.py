@@ -7,6 +7,11 @@ Run from the project root with the backend environment available:
 import tempfile
 from pathlib import Path
 
+import sys
+
+REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(REPOSITORY_ROOT))
+
 from backend.app import auth as auth_module
 from backend.app import repository as repository_module
 from backend.app.models import CallStatus
@@ -21,8 +26,8 @@ def main() -> None:
         auth_module.initialize_auth_database()
 
         repository = repository_module.CallRepository()
-        user_a = auth_module.create_user("User A", "a@example.com", "password123")
-        user_b = auth_module.create_user("User B", "b@example.com", "password123")
+        user_a = auth_module.create_user("User A", "a@example.com", "TestPassphrase123!")
+        user_b = auth_module.create_user("User B", "b@example.com", "TestPassphrase123!")
 
         call_a = repository.create("A private call", user_id=user_a.id)
         call_b = repository.create("B private call", user_id=user_b.id)

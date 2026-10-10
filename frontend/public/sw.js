@@ -1,4 +1,4 @@
-const CACHE_NAME = "conversation-assistant-shell-v1";
+const CACHE_NAME = "tca-shell-v2";
 
 const APP_SHELL = [
   "/",

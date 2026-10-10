@@ -12,8 +12,8 @@ const {
 const fs = require("fs");
 const path = require("path");
 
-const DEFAULT_TCA_URL = "http://localhost:5173/";
-const API_BASE_URL = "http://127.0.0.1:8000";
+const DEFAULT_TCA_URL = "https://clipian.netlify.app/";
+const API_BASE_URL = process.env.TCA_API_URL?.trim() || (app.isPackaged ? "https://clipian-api.onrender.com" : "http://127.0.0.1:8000");
 const AUTH_FILE_NAME = "auth-token.bin";
 const PROTOCOL_SCHEME = "tca-capture";
 
@@ -35,7 +35,7 @@ let elapsedSeconds = 0;
 let timer = null;
 
 function getTcaUrl(capture = false, signup = false) {
-  const base = process.env.TCA_URL?.trim() || DEFAULT_TCA_URL;
+  const base = process.env.TCA_URL?.trim() || (app.isPackaged ? DEFAULT_TCA_URL : "http://localhost:5173/");
 
   try {
     const url = new URL(base);

@@ -1189,7 +1189,7 @@ async def upload_browser_capture(
     call_id: str,
     request: Request,
     mic_audio: UploadFile = File(...),
-    system_audio: UploadFile = File(...),
+    system_audio: UploadFile | None = File(None),
     duration_seconds: float = Form(...),
     user=Depends(get_current_user),
 ):
@@ -1229,11 +1229,11 @@ async def upload_browser_capture(
             pass
 
     mic_extension = _validate_audio_upload(mic_audio, "Microphone audio")
-    system_extension = _validate_audio_upload(system_audio, "System audio")
+    system_extension = _validate_audio_upload(system_audio, "System audio") if system_audio else None
 
     call_directory = call_repository.get_directory(call_id)
     mic_destination = call_directory / f"mic_raw{mic_extension}"
-    system_destination = call_directory / f"system_raw{system_extension}"
+    system_destination = call_directory / f"system_raw{system_extension}" if system_extension else None
 
     # A call may be retried after a failed upload; replace only the two capture
     # inputs and leave the rest of the call memory untouched.
@@ -1250,18 +1250,18 @@ async def upload_browser_capture(
             mic_destination,
             max_bytes,
         )
-        system_bytes = await _save_audio_upload(
-            system_audio,
-            system_destination,
-            max_bytes,
-        )
+        system_bytes = 0
+        if system_audio is not None and system_destination is not None:
+            system_bytes = await _save_audio_upload(system_audio, system_destination, max_bytes)
     except HTTPException:
         mic_destination.unlink(missing_ok=True)
-        system_destination.unlink(missing_ok=True)
+        if system_destination is not None:
+            system_destination.unlink(missing_ok=True)
         raise
     except Exception as error:
         mic_destination.unlink(missing_ok=True)
-        system_destination.unlink(missing_ok=True)
+        if system_destination is not None:
+            system_destination.unlink(missing_ok=True)
         raise HTTPException(
             status_code=500,
             detail=f"Could not save the browser recording: {error}",
@@ -1288,7 +1288,7 @@ async def upload_browser_capture(
         "call": call,
         "recording": {
             "mic": str(mic_destination),
-            "system": str(system_destination),
+            "system": str(system_destination) if system_destination is not None else None,
             "duration_seconds": call.duration_seconds,
             "mic_bytes": mic_bytes,
             "system_bytes": system_bytes,
@@ -1500,14 +1500,8 @@ def process_call(
         None,
     )
 
-    if mic_file is None or system_file is None:
-        raise HTTPException(
-            status_code=409,
-            detail=(
-                "This call does not have "
-                "a complete saved recording."
-            ),
-        )
+    if mic_file is None:
+        raise HTTPException(status_code=409, detail="This call does not have a saved microphone recording.")
 
     call.status = (
         CallStatus.PROCESSING
